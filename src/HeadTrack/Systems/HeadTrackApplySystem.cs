@@ -95,7 +95,8 @@ namespace HeadTrack.Systems
             Runtime.LastSequence = Runtime.Ring.TakeNewer(Runtime.LastSequence, m_Samples);
             foreach (PoseSample sample in m_Samples)
             {
-                Runtime.Head.AddPose(Runtime.TicksToSeconds(sample.Timestamp), sample.Pose);
+                double previous = sample.PreviousArrival > 0 ? Runtime.TicksToSeconds(sample.PreviousArrival) : double.NaN;
+                Runtime.Head.AddPose(Runtime.TicksToSeconds(sample.Timestamp), sample.Pose, previous);
             }
             long lastArrival = Runtime.Ring.LastArrival;
             if (lastArrival > 0)

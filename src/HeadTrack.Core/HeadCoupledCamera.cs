@@ -106,10 +106,14 @@ namespace HeadTrack.Core
 
         public EyeMapper Mapper { get; }
 
-        /// <summary>Feeds an eye position (mm) that arrived at <paramref name="time"/> (s).</summary>
-        public void AddEye(double time, Vec3 eyeMm)
+        /// <summary>
+        /// Feeds an eye position (mm) that arrived at <paramref name="time"/>
+        /// (s); <paramref name="previousArrival"/> is when the packet before it
+        /// arrived, a repeat or not (NaN if unknown).
+        /// </summary>
+        public void AddEye(double time, Vec3 eyeMm, double previousArrival = double.NaN)
         {
-            Signal.AddSample(time, eyeMm);
+            Signal.AddSample(time, eyeMm, previousArrival);
         }
 
         /// <summary>Notes a packet that repeated the previous pose (the source is alive, the head still).</summary>
@@ -118,10 +122,10 @@ namespace HeadTrack.Core
             Signal.MarkAlive(time);
         }
 
-        /// <summary>Feeds a packet's pose that arrived at <paramref name="time"/> (s).</summary>
-        public void AddPose(double time, OpenTrackPose pose)
+        /// <summary>Feeds a packet's pose that arrived at <paramref name="time"/> (s); see <see cref="AddEye"/>.</summary>
+        public void AddPose(double time, OpenTrackPose pose, double previousArrival = double.NaN)
         {
-            AddEye(time, Mapper.SourceEye(pose));
+            AddEye(time, Mapper.SourceEye(pose), previousArrival);
         }
 
         public void RequestCentre(double now)

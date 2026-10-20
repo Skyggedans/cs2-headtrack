@@ -7,8 +7,8 @@ public class EyeMapperTests
     private const double Z0 = 497.0;
     private static readonly Vec3 Neutral = new(0, 0, Z0);
 
-    private static HeadSignalOutput Signal(Vec3 eye, double presence = 1.0) =>
-        new(true, eye, presence, 0.0, 1.0 / 33.0, 0.035, false);
+    private static HeadSignalOutput Signal(Vec3 eye, double presence = 1.0, bool settling = false) =>
+        new(true, eye, presence, 0.0, 1.0 / 33.0, 0.035, false, settling);
 
     /// <summary>A mapper whose centre is captured from <paramref name="rest"/>.</summary>
     private static (EyeMapper Mapper, double Now) Centred(MapperSettings settings, Vec3 rest)

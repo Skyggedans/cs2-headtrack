@@ -12,7 +12,10 @@ namespace HeadTrack.Core
         /// <summary>1€ parameters for z, the distance to the screen.</summary>
         public OneEuroParameters Depth { get; set; } = new OneEuroParameters(0.3, 0.01, 1.5);
 
-        /// <summary>Seconds without a sample before the face counts as lost.</summary>
+        /// <summary>
+        /// Seconds without any packet before the face counts as lost; a
+        /// sample after a longer silence starts the filter afresh.
+        /// </summary>
         public double PresenceTimeout { get; set; } = 0.5;
 
         /// <summary>Seconds the presence takes to fall from 1 to 0 once the face is lost.</summary>
@@ -21,16 +24,20 @@ namespace HeadTrack.Core
         /// <summary>Seconds the presence takes to rise from 0 to 1 once samples return.</summary>
         public double FadeIn { get; set; } = 0.4;
 
-        /// <summary>A pause longer than this many periods restarts the filter on the next sample.</summary>
-        public double RestartGapPeriods { get; set; } = 3.0;
+        /// <summary>
+        /// A sample this far (mm) from a pose the source held for
+        /// <see cref="HoldSeconds"/> is a re-acquisition, not a movement:
+        /// OpenTrack keeps sending the last pose while the face is lost.
+        /// </summary>
+        public double JumpAfterHoldMm { get; set; } = 50.0;
 
-        /// <summary>Seconds over which the output glides from where it was to the restarted signal.</summary>
-        public double RestartCrossfade { get; set; } = 0.25;
+        /// <summary>How long (s) a pose must have been held for a jump from it to count as a re-acquisition.</summary>
+        public double HoldSeconds { get; set; } = 0.3;
 
-        /// <summary>The output never moves faster than this (mm/s).</summary>
-        public double MaxSpeed { get; set; } = 400.0;
+        /// <summary>The output never moves faster than this (mm/s); deliberate peeks stay below it.</summary>
+        public double MaxSpeed { get; set; } = 1500.0;
 
-        /// <summary>Upper bound of the interpolation delay (s).</summary>
+        /// <summary>Upper bound of the interpolation delay (s), unless the period itself is longer.</summary>
         public double MaxDelay { get; set; } = 0.050;
 
         /// <summary>How far past the newest sample the output may extrapolate (s).</summary>
@@ -38,12 +45,25 @@ namespace HeadTrack.Core
 
         /// <summary>The period assumed until intervals have been measured (s).</summary>
         public double NominalPeriod { get; set; } = 1.0 / 33.0;
+
+        /// <summary>
+        /// Intervals outside [MinPeriod, MaxPeriod] (s) are not the sample
+        /// period: bursts after a receive stall, or the pauses of a still head.
+        /// </summary>
+        public double MinPeriod { get; set; } = 0.002;
+
+        /// <inheritdoc cref="MinPeriod"/>
+        public double MaxPeriod { get; set; } = 0.100;
+
+        /// <summary>A frame longer than this (s) counts as this long, so fades and the speed limit never finish in one frame after a pause.</summary>
+        public double MaxFrameSeconds { get; set; } = 0.1;
     }
 
     /// <summary>What <see cref="HeadSignal.Update"/> hands to the frame.</summary>
     public readonly struct HeadSignalOutput
     {
-        public HeadSignalOutput(bool hasEye, Vec3 eye, double presence, double age, double period, double delay, bool held)
+        public HeadSignalOutput(bool hasEye, Vec3 eye, double presence, double age, double period, double delay, bool held,
+            bool settling)
         {
             HasEye = hasEye;
             Eye = eye;
@@ -52,6 +72,7 @@ namespace HeadTrack.Core
             Period = period;
             Delay = delay;
             Held = held;
+            Settling = settling;
         }
 
         /// <summary>False until the first sample.</summary>
@@ -63,7 +84,7 @@ namespace HeadTrack.Core
         /// <summary>0 when the face is lost, 1 when it is tracked, smooth in between.</summary>
         public double Presence { get; }
 
-        /// <summary>Seconds since the newest sample arrived.</summary>
+        /// <summary>Seconds since the newest packet arrived.</summary>
         public double Age { get; }
 
         /// <summary>The estimated sample period (s).</summary>
@@ -74,24 +95,30 @@ namespace HeadTrack.Core
 
         /// <summary>The frame ran past the newest sample (plus the extrapolation allowance) and held.</summary>
         public bool Held { get; }
+
+        /// <summary>The eye does not follow the head this frame: it is fading out a re-acquisition, or held at the speed limit.</summary>
+        public bool Settling { get; }
     }
 
     /// <summary>
-    /// Turns the tracker's samples (about 33 Hz, arrival-stamped) into one eye
-    /// position per game frame:
-    /// each sample goes through the 1€ <see cref="EyeFilter"/> when it arrives;
-    /// each frame reads the filtered track at now − δ, δ = T̂ + 2σ (the measured
-    /// period and its jitter), interpolating between the samples around that
-    /// time, so the eye moves smoothly at any frame rate. A pause longer than a
-    /// few periods restarts the filter and glides the output to the new track;
-    /// the output speed is limited, so no gap or re-acquisition can snap the
-    /// camera; and the presence falls to 0 after a timeout of silence and rises
-    /// again when samples return.
+    /// Turns the tracker's samples (arrival-stamped, 33 Hz from the tracker,
+    /// up to 250 Hz through OpenTrack's filter) into one eye position per game
+    /// frame. Each sample goes through the 1€ <see cref="EyeFilter"/> when it
+    /// arrives; each frame reads the filtered track at now − δ, δ = T̂ + 2σ
+    /// (the measured period and its jitter), interpolating between the
+    /// samples around that time, so the eye moves smoothly at any frame rate.
+    /// The presence falls to 0 after a timeout without packets and rises when
+    /// they return. A re-acquisition — a sample after a loss, or a jump from a
+    /// pose the source held — never shows as a camera movement: the view fades
+    /// out from where it was and back in on the new track.
     /// </summary>
     public sealed class HeadSignal
     {
         private const int HistoryLength = 16;
         private const int IntervalCount = 32;
+
+        /// <summary>How fast δ may change (s per s), so the sampling time never runs backwards.</summary>
+        private const double DelaySlew = 0.05;
 
         private readonly SignalSettings m_Settings;
         private readonly EyeFilter m_Filter;
@@ -102,16 +129,18 @@ namespace HeadTrack.Core
         private int m_IntervalsNext;
         private bool m_HasSample;
         private double m_LastSample;
+        private Vec3 m_LastRaw;
         private double m_LastAlive;
         private bool m_HasUpdate;
         private double m_LastUpdate;
         private double m_PresenceProgress;
         private bool m_HasOutput;
         private Vec3 m_Output;
+        private bool m_HasDelay;
+        private double m_Delay;
         private bool m_RestartPending;
-        private bool m_Crossfading;
-        private Vec3 m_CrossfadeFrom;
-        private double m_CrossfadeStart;
+        private bool m_Dipping;
+        private Vec3 m_DipHold;
 
         public HeadSignal(SignalSettings settings)
         {
@@ -119,10 +148,13 @@ namespace HeadTrack.Core
             m_Filter = new EyeFilter(settings.Lateral, settings.Depth);
         }
 
+        /// <summary>Re-acquisitions so far: a sample after a loss, or a jump from a held pose.</summary>
+        public long Restarts { get; private set; }
+
         /// <summary>
         /// Notes that the source sent a packet at <paramref name="time"/> that
         /// repeated the previous pose: no new sample, but the head is there,
-        /// so the presence holds and the next sample is not a restart.
+        /// so the presence holds.
         /// </summary>
         public void MarkAlive(double time)
         {
@@ -132,26 +164,35 @@ namespace HeadTrack.Core
             }
         }
 
-        /// <summary>Feeds one sample; samples must come in arrival order.</summary>
-        public void AddSample(double time, Vec3 eye)
+        /// <summary>
+        /// Feeds one sample that arrived at <paramref name="time"/>;
+        /// <paramref name="previousArrival"/> is when the packet before it
+        /// arrived, a repeat or not (NaN if unknown). Samples must come in
+        /// arrival order.
+        /// </summary>
+        public void AddSample(double time, Vec3 eye, double previousArrival = double.NaN)
         {
             double dt = m_Settings.NominalPeriod;
             if (m_HasSample)
             {
-                double gapLimit = m_Settings.RestartGapPeriods * EstimatePeriod();
+                double heard = Math.Max(m_LastSample, m_LastAlive);
+                if (previousArrival > heard)
+                {
+                    heard = previousArrival;
+                }
                 double interval = time - m_LastSample;
-                if (time - Math.Max(m_LastSample, m_LastAlive) > gapLimit)
+                bool lost = time - heard > m_Settings.PresenceTimeout;
+                bool jumped = interval >= m_Settings.HoldSeconds && (eye - m_LastRaw).Length > m_Settings.JumpAfterHoldMm;
+                if (lost || jumped)
                 {
                     m_Filter.Reset();
                     m_History.Clear();
                     m_RestartPending = true;
+                    Restarts++;
                 }
                 else if (interval > 0)
                 {
-                    if (interval <= gapLimit)
-                    {
-                        RecordInterval(interval);
-                    }
+                    RecordInterval(interval);
                     dt = interval;
                 }
             }
@@ -163,6 +204,7 @@ namespace HeadTrack.Core
             }
             m_HasSample = true;
             m_LastSample = time;
+            m_LastRaw = eye;
             if (time > m_LastAlive)
             {
                 m_LastAlive = time;
@@ -172,47 +214,65 @@ namespace HeadTrack.Core
         /// <summary>The eye for a frame at <paramref name="now"/> (seconds, same clock as the samples).</summary>
         public HeadSignalOutput Update(double now)
         {
-            double frameDt = m_HasUpdate ? Math.Max(0, now - m_LastUpdate) : 0;
+            double frameDt = m_HasUpdate ? Clamp(now - m_LastUpdate, 0, m_Settings.MaxFrameSeconds) : 0;
             m_HasUpdate = true;
             m_LastUpdate = now;
             if (!m_HasSample)
             {
-                return new HeadSignalOutput(false, Vec3.Zero, 0, double.PositiveInfinity, EstimatePeriod(), 0, true);
+                return new HeadSignalOutput(false, Vec3.Zero, 0, double.PositiveInfinity, EstimatePeriod(), 0, true, false);
             }
 
             double age = now - Math.Max(m_LastSample, m_LastAlive);
-            bool present = age <= m_Settings.PresenceTimeout;
-            m_PresenceProgress = present
-                ? Math.Min(1, m_PresenceProgress + frameDt / m_Settings.FadeIn)
-                : Math.Max(0, m_PresenceProgress - frameDt / m_Settings.FadeOut);
-
-            double period = EstimatePeriod();
-            double delay = Clamp(period + 2 * EstimateJitter(period), 1.1 * period, m_Settings.MaxDelay);
-            Vec3 value = SampleHistory(now - delay, out bool held);
-
             if (m_RestartPending)
             {
                 m_RestartPending = false;
-                if (m_HasOutput)
+                if (m_HasOutput && m_PresenceProgress > 0)
                 {
-                    m_Crossfading = true;
-                    m_CrossfadeFrom = m_Output;
-                    m_CrossfadeStart = now;
-                }
-            }
-            if (m_Crossfading)
-            {
-                double progress = (now - m_CrossfadeStart) / m_Settings.RestartCrossfade;
-                if (progress >= 1)
-                {
-                    m_Crossfading = false;
+                    // Something shows: fade it out where it is first.
+                    m_Dipping = true;
+                    m_DipHold = m_Output;
                 }
                 else
                 {
-                    value = m_CrossfadeFrom + (value - m_CrossfadeFrom) * Smoothstep(progress);
+                    // Nothing shows: take the new track as it is.
+                    m_HasOutput = false;
                 }
             }
 
+            double period = EstimatePeriod();
+            double target = Clamp(period + 2 * EstimateJitter(period), 1.1 * period, Math.Max(m_Settings.MaxDelay, 1.1 * period));
+            if (!m_HasDelay)
+            {
+                m_Delay = target;
+                m_HasDelay = true;
+            }
+            else
+            {
+                double slew = DelaySlew * frameDt;
+                m_Delay += Clamp(target - m_Delay, -slew, slew);
+            }
+            Vec3 value = SampleHistory(now - m_Delay, out bool held);
+
+            if (m_Dipping)
+            {
+                m_PresenceProgress = Math.Max(0, m_PresenceProgress - Rate(frameDt, m_Settings.FadeOut));
+                if (m_PresenceProgress > 0)
+                {
+                    return new HeadSignalOutput(true, m_DipHold, Smoothstep(m_PresenceProgress), age, period, m_Delay, held, true);
+                }
+                // Faded out: the new track takes over at zero presence.
+                m_Dipping = false;
+                m_HasOutput = false;
+            }
+            else
+            {
+                bool present = age <= m_Settings.PresenceTimeout;
+                m_PresenceProgress = present
+                    ? Math.Min(1, m_PresenceProgress + Rate(frameDt, m_Settings.FadeIn))
+                    : Math.Max(0, m_PresenceProgress - Rate(frameDt, m_Settings.FadeOut));
+            }
+
+            bool settling = false;
             if (m_HasOutput)
             {
                 Vec3 step = value - m_Output;
@@ -221,11 +281,12 @@ namespace HeadTrack.Core
                 if (length > limit)
                 {
                     value = length > 0 ? m_Output + step * (limit / length) : m_Output;
+                    settling = true;
                 }
             }
             m_Output = value;
             m_HasOutput = true;
-            return new HeadSignalOutput(true, value, Smoothstep(m_PresenceProgress), age, period, delay, held);
+            return new HeadSignalOutput(true, value, Smoothstep(m_PresenceProgress), age, period, m_Delay, held, settling);
         }
 
         public void Reset()
@@ -239,12 +300,18 @@ namespace HeadTrack.Core
             m_HasUpdate = false;
             m_PresenceProgress = 0;
             m_HasOutput = false;
+            m_HasDelay = false;
             m_RestartPending = false;
-            m_Crossfading = false;
+            m_Dipping = false;
         }
 
+        /// <summary>Keeps only intervals that can be the sample period; bursts and pauses would drag the estimate away for good.</summary>
         private void RecordInterval(double interval)
         {
+            if (interval < m_Settings.MinPeriod || interval > m_Settings.MaxPeriod)
+            {
+                return;
+            }
             m_Intervals[m_IntervalsNext] = interval;
             m_IntervalsNext = (m_IntervalsNext + 1) % IntervalCount;
             m_IntervalsStored = Math.Min(m_IntervalsStored + 1, IntervalCount);
@@ -265,20 +332,26 @@ namespace HeadTrack.Core
                 : 0.5 * (m_Sorted[middle - 1] + m_Sorted[middle]);
         }
 
-        /// <summary>The RMS deviation of the recent intervals from the period.</summary>
+        /// <summary>
+        /// The RMS deviation from the period of the intervals up to 1.5
+        /// periods: a dropped sample leaves a gap no delay below two periods
+        /// could bridge, so it must not inflate the delay.
+        /// </summary>
         private double EstimateJitter(double period)
         {
-            if (m_IntervalsStored == 0)
-            {
-                return 0;
-            }
             double sum = 0;
+            int count = 0;
             for (int i = 0; i < m_IntervalsStored; i++)
             {
-                double d = m_Intervals[i] - period;
-                sum += d * d;
+                double interval = m_Intervals[i];
+                if (interval <= 1.5 * period)
+                {
+                    double d = interval - period;
+                    sum += d * d;
+                    count++;
+                }
             }
-            return Math.Sqrt(sum / m_IntervalsStored);
+            return count > 0 ? Math.Sqrt(sum / count) : 0;
         }
 
         private Vec3 SampleHistory(double time, out bool held)
@@ -321,6 +394,8 @@ namespace HeadTrack.Core
             }
             return eLast + slope * over;
         }
+
+        private static double Rate(double dt, double seconds) => seconds > 0 ? dt / seconds : 1;
 
         private static double Smoothstep(double p)
         {
