@@ -263,21 +263,29 @@ public class HeadSignalTests
             signal.Update(now + 0.001);
         }
         HeadSignalOutput output = default;
-        Vec3 halfway = default;
         for (int i = 1; i <= 100; i++)
         {
             double t = now + i * Period;
             signal.MarkAlive(t);
             output = signal.Update(t + 0.001);
-            if (i == 50)
-            {
-                halfway = output.Eye;
-            }
         }
 
         Assert.Equal(1.0, output.Presence, 9);
         Assert.True(output.Age < 0.01, $"age {output.Age:F3} s");
-        Assert.True((output.Eye - halfway).Length < 1e-9, $"drifted {(output.Eye - halfway).Length:F3} mm while still");
+    }
+
+    [Fact]
+    public void A_head_that_stops_settles_where_it_stopped()
+    {
+        var signal = new HeadSignal(new SignalSettings());
+        // The head moves at 100 mm/s and stops; the source then repeats the
+        // last pose, and the ring drops the repeats.
+        var packets = Packets(0, 4, Period, Period, t => new Vec3(t < 1.0 ? 100 * t : 100, 0, 600));
+
+        var frames = Drive(signal, packets, 0, 4, 60);
+
+        double last = frames[^1].Output.Eye.X;
+        Assert.True(Math.Abs(last - 100) < 0.05, $"stuck at {last:F2} mm for a head stopped at 100 mm");
     }
 
     [Fact]

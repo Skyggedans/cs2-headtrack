@@ -107,6 +107,10 @@ namespace HeadTrack.Systems
         private void Step()
         {
             double now = FrameTime();
+            // Read before draining: every packet up to this arrival is then
+            // taken, so it is a repeat of a sample already fed, never a new
+            // pose still in the ring.
+            long lastArrival = Runtime.Ring.LastArrival;
             m_Samples.Clear();
             Runtime.LastSequence = Runtime.Ring.TakeNewer(Runtime.LastSequence, m_Samples);
             foreach (PoseSample sample in m_Samples)
@@ -114,7 +118,6 @@ namespace HeadTrack.Systems
                 double previous = sample.PreviousArrival > 0 ? Runtime.TicksToSeconds(sample.PreviousArrival) : double.NaN;
                 Runtime.Head.AddPose(Runtime.TicksToSeconds(sample.Timestamp), sample.Pose, previous);
             }
-            long lastArrival = Runtime.Ring.LastArrival;
             if (lastArrival > 0)
             {
                 // Repeats of the previous pose were dropped by the ring, but a

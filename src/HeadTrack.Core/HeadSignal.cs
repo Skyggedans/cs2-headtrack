@@ -130,6 +130,7 @@ namespace HeadTrack.Core
         private bool m_HasSample;
         private double m_LastSample;
         private Vec3 m_LastRaw;
+        private double m_LastFilterTime;
         private double m_LastAlive;
         private bool m_HasUpdate;
         private double m_LastUpdate;
@@ -154,13 +155,22 @@ namespace HeadTrack.Core
         /// <summary>
         /// Notes that the source sent a packet at <paramref name="time"/> that
         /// repeated the previous pose: no new sample, but the head is there,
-        /// so the presence holds.
+        /// so the presence holds — and the pose holds, so once a period the
+        /// filter takes it again, as the tracker would report it. A head that
+        /// stops then settles where it stopped, not where the filter lagged.
         /// </summary>
         public void MarkAlive(double time)
         {
-            if (m_HasSample && time > m_LastAlive)
+            if (!m_HasSample || !(time > m_LastAlive))
             {
-                m_LastAlive = time;
+                return;
+            }
+            m_LastAlive = time;
+            double sinceFilter = time - m_LastFilterTime;
+            if (sinceFilter >= EstimatePeriod())
+            {
+                AddToHistory(time, m_Filter.Filter(m_LastRaw, sinceFilter));
+                m_LastFilterTime = time;
             }
         }
 
@@ -190,20 +200,19 @@ namespace HeadTrack.Core
                     m_RestartPending = true;
                     Restarts++;
                 }
-                else if (interval > 0)
+                else
                 {
-                    RecordInterval(interval);
-                    dt = interval;
+                    if (interval > 0)
+                    {
+                        RecordInterval(interval);
+                    }
+                    dt = Math.Max(m_Settings.MinPeriod, time - m_LastFilterTime);
                 }
             }
-            Vec3 filtered = m_Filter.Filter(eye, dt);
-            m_History.Add((time, filtered));
-            if (m_History.Count > HistoryLength)
-            {
-                m_History.RemoveAt(0);
-            }
+            AddToHistory(time, m_Filter.Filter(eye, dt));
             m_HasSample = true;
             m_LastSample = time;
+            m_LastFilterTime = time;
             m_LastRaw = eye;
             if (time > m_LastAlive)
             {
@@ -303,6 +312,15 @@ namespace HeadTrack.Core
             m_HasDelay = false;
             m_RestartPending = false;
             m_Dipping = false;
+        }
+
+        private void AddToHistory(double time, Vec3 filtered)
+        {
+            m_History.Add((time, filtered));
+            if (m_History.Count > HistoryLength)
+            {
+                m_History.RemoveAt(0);
+            }
         }
 
         /// <summary>Keeps only intervals that can be the sample period; bursts and pauses would drag the estimate away for good.</summary>
