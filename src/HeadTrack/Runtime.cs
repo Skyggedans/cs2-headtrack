@@ -181,7 +181,7 @@ namespace HeadTrack
             }
             foreach (string key in new[]
             {
-                "enabled", "path", "mode", "source", "gain", "depth_gain", "window_depth", "distance_mm",
+                "enabled", "follow_camera", "photo_mode", "path", "mode", "source", "gain", "depth_gain", "window_depth", "distance_mm",
                 "screen_width_mm", "screen_height_mm", "max_shift_x", "max_shift_y", "pin_lod_fov",
                 "pose_address", "pose_port", "debug_port", "shots_dir", "status_seconds",
             })
@@ -210,19 +210,28 @@ namespace HeadTrack
             {
                 case "enabled":
                 case "pin_lod_fov":
+                case "follow_camera":
+                case "photo_mode":
                     bool flag = value == "1" || value.Equals("true", StringComparison.OrdinalIgnoreCase);
                     if (!flag && value != "0" && !value.Equals("false", StringComparison.OrdinalIgnoreCase))
                     {
                         error = "expected 0 or 1";
                         return false;
                     }
-                    if (name == "enabled")
+                    switch (name)
                     {
-                        Enabled = flag;
-                    }
-                    else
-                    {
-                        PinLodFov = flag;
+                        case "enabled":
+                            Enabled = flag;
+                            break;
+                        case "follow_camera":
+                            FollowCamera = flag;
+                            break;
+                        case "photo_mode":
+                            PhotoMode = flag;
+                            break;
+                        default:
+                            PinLodFov = flag;
+                            break;
                     }
                     return true;
                 case "path":

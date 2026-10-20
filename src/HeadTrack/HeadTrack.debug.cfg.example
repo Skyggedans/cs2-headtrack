@@ -26,6 +26,9 @@ max_shift_y = 0.45
 path = explicit
 pin_lod_fov = 1
 enabled = 1
+# The effect on the follow camera (a followed citizen or vehicle) and in photo mode.
+follow_camera = 1
+photo_mode = 0
 
 # Debug channel: text commands on 127.0.0.1 only (0 = off), see tools/headtrack_send.py.
 debug_port = 0

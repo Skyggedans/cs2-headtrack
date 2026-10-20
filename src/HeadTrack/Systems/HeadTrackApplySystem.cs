@@ -45,7 +45,7 @@ namespace HeadTrack.Systems
         private Func<Vec3, Vec3> m_Clamp = null!;
         private Camera? m_LastCamera;
         private GameMode m_LastMode;
-        private IGameCameraController? m_LastController;
+        private CameraModeTracker m_Modes = null!;
         private Vec3 m_Base;
         private Vec3 m_GroundWanted;
         private bool m_HasGroundWanted;
@@ -76,6 +76,12 @@ namespace HeadTrack.Systems
             m_Water = World.GetOrCreateSystemManaged<WaterSystem>();
             m_Raycast = World.GetOrCreateSystemManaged<RaycastSystem>();
             m_Clamp = ClampPosition;
+            m_Modes = new CameraModeTracker(m_CameraUpdate, World.GetOrCreateSystemManaged<GamePanelUISystem>(),
+                World.GetOrCreateSystemManaged<GameScreenUISystem>());
+            if (!ViewModes.HasMapViewTimer)
+            {
+                Mod.Log.Warn("CameraController.m_MapViewTimer not found: the map-tile gate covers the open view only");
+            }
             MethodInfo? setter = typeof(CameraUpdateSystem)
                 .GetProperty("position", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?
                 .GetSetMethod(true);
@@ -87,6 +93,12 @@ namespace HeadTrack.Systems
             {
                 Mod.Log.Warn("CameraUpdateSystem.position has no setter: water, clouds and VFX stay centred on the vanilla camera");
             }
+        }
+
+        protected override void OnDestroy()
+        {
+            m_Modes.Dispose();
+            base.OnDestroy();
         }
 
         protected override void OnUpdate()
@@ -136,13 +148,13 @@ namespace HeadTrack.Systems
             Camera camera = m_CameraUpdate.activeCamera;
             GameMode mode = gameManager != null ? gameManager.gameMode : GameMode.None;
             bool inGame = gameManager != null && mode == GameMode.Game && !gameManager.isGameLoading;
-            IGameCameraController controller = m_CameraUpdate.activeCameraController;
-            // A camera, mode or controller change (photo mode, a cinematic
-            // camera) drops the effect at once; it ramps in again after.
-            bool cut = camera != m_LastCamera || mode != m_LastMode || !ReferenceEquals(controller, m_LastController);
+            m_Modes.Update();
+            // A camera or game-mode change, or a brain cut (a controller switch
+            // with no blend), drops the effect at once. A switch with a blend
+            // closes the gate instead: the effect ramps out while the brain blends.
+            bool cut = camera != m_LastCamera || mode != m_LastMode || m_Modes.HardCut;
             m_LastCamera = camera;
             m_LastMode = mode;
-            m_LastController = controller;
             m_Keys.Update(now, inGame);
             if (!inGame || m_CameraUpdate.activeViewer == null || camera == null)
             {
@@ -150,19 +162,23 @@ namespace HeadTrack.Systems
             }
 
             CameraController gameplay = m_CameraUpdate.gamePlayController;
-            bool isGameplay = gameplay != null && controller != null && ReferenceEquals(controller, gameplay);
-            bool gateOpen = Runtime.Enabled && isGameplay && !MapTilesUISystem.mapTileViewActive && !BrainBlending();
+            bool gateOpen = Runtime.Enabled && m_Modes.Allowed(Runtime.FollowCamera, Runtime.PhotoMode) && !m_Modes.Switched
+                && !CameraModeTracker.BrainBlending() && !m_Modes.MenuOpen;
 
             Transform transform = camera.transform;
             FrustumTangents rendered = UnityConvert.Tangents(camera.projectionMatrix);
             var frame = new CameraFrame(transform.position.ToVec3(), transform.right.ToVec3(), transform.up.ToVec3(),
                 transform.forward.ToVec3(), camera.nearClipPlane, camera.farClipPlane, rendered);
-            if (isGameplay && gameplay != null)
+            if (gateOpen)
             {
-                m_LastDepth = WindowDepth.AimPoint(gameplay.pivot.ToVec3(), frame.Position, frame.Forward, gameplay.zoom,
-                    frame.Near, frame.Far, gameplay.zoomRange.min);
+                // Held while the gate is shut, so a ramp-out keeps a valid window.
+                double aim = ModeDepth.Aim(m_Modes.Mode, m_CameraUpdate, camera, frame);
+                if (aim > 0)
+                {
+                    m_LastDepth = aim;
+                }
             }
-            PrepareClamp(gameplay);
+            PrepareClamp(m_Modes.Mode, gameplay, frame.Position);
             UpdateObstacles(now, cut, clear);
             m_Base = frame.Position;
             m_HasGroundWanted = false;
@@ -237,14 +253,8 @@ namespace HeadTrack.Systems
             camera.lensShift = new Vector2((float)lens.ShiftX, (float)lens.ShiftY);
         }
 
-        private static bool BrainBlending()
-        {
-            CinemachineCore core = CinemachineCore.Instance;
-            return core.BrainCount > 0 && core.GetActiveBrain(0).IsBlending;
-        }
-
         /// <summary>Fetches the terrain and water heights the clamp samples, as the game's own camera does each frame.</summary>
-        private void PrepareClamp(CameraController? gameplay)
+        private void PrepareClamp(ViewMode viewMode, CameraController? gameplay, Vec3 vanilla)
         {
             m_Height = m_Terrain.GetHeightData();
             m_HasTerrain = m_Height.isCreated;
@@ -257,9 +267,11 @@ namespace HeadTrack.Systems
                 maxHeight.Complete();
                 m_HasWater = m_Surfaces.depths.isCreated;
             }
-            double zoomMin = gameplay != null ? gameplay.zoomRange.min : 10.0;
-            double zoom = gameplay != null ? gameplay.zoom : zoomMin;
-            m_FloorOffset = 0.5 * zoomMin + 0.1 * Math.Max(0, zoom - zoomMin);
+            // The game's own lift for the gameplay camera (its zoom is stale
+            // in other modes), 1 m otherwise; never above the vanilla camera.
+            m_FloorOffset = 0;
+            double clearance = vanilla.Y - ClampToGround(new Vec3(vanilla.X, double.NegativeInfinity, vanilla.Z)).Y;
+            m_FloorOffset = ModeDepth.FloorOffset(viewMode, gameplay, clearance);
         }
 
         /// <summary>The start of this frame on the clock the samples are stamped with, wherever in the frame this system runs.</summary>
@@ -330,7 +342,8 @@ namespace HeadTrack.Systems
         /// <summary>Casts the move the head asks for this frame; the result comes with the next frame.</summary>
         private void QueueObstacleCast(double near)
         {
-            if (!m_HasGroundWanted || !ObstacleCast.TryCreate(m_Base, m_GroundWanted, 2 * near, out ObstacleCast cast))
+            // The photo camera's near plane is 1 cm: keep half a metre at least.
+            if (!m_HasGroundWanted || !ObstacleCast.TryCreate(m_Base, m_GroundWanted, Math.Max(2 * near, 0.5), out ObstacleCast cast))
             {
                 return;
             }

@@ -22,6 +22,8 @@
     <Cs2Reference Include="UnityEngine.CoreModule" />
     <Cs2Reference Include="UnityEngine.ImageConversionModule" />
     <Cs2Reference Include="UnityEngine.ScreenCaptureModule" />
+    <Cs2Reference Include="Unity.RenderPipelines.HighDefinition.Runtime" />
+    <Cs2Reference Include="Unity.RenderPipelines.Core.Runtime" />
   </ItemGroup>
 
   <ItemGroup>
