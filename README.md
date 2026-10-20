@@ -1,0 +1,132 @@
+# HeadTrack: the screen as a window into your city
+
+A code mod for **Cities: Skylines II** (1.6.2) that moves the camera with your
+head. The screen becomes a window: lean to the right and nearby towers slide
+left against the ground, the far hills move with you, and with a higher gain
+you can look around a building. The effect is a head-coupled perspective (an
+off-axis "Kooima" projection), so what lies in the window plane — the ground
+where the camera aims — stays put, and the mouse still picks exactly what you
+see.
+
+Head poses come from [OpenTrack](https://github.com/opentrack/opentrack)
+over UDP, so any tracker OpenTrack supports works; it was built and tested with
+a Tobii Eye Tracker 5 through OpenTrack's Tobii tracker, with the game under
+Wine on Linux.
+
+## Install
+
+You need the .NET 10 SDK and the game.
+
+```sh
+dotnet build src/HeadTrack -t:Deploy
+```
+
+builds the mod and copies `HeadTrack.dll`, `HeadTrack.Core.dll` (each with its
+`.pdb`) and `0Harmony.dll` into
+`<user data>/Mods/HeadTrack/`, where the game loads local mods. The game and
+user-data folders default to a Wine prefix (`Directory.Build.props`); override
+them with `-p:Cs2GameDir=...` and `-p:Cs2UserDataDir=...`. No launcher or
+developer mode is needed; the mod logs to `Logs/HeadTrack.log`.
+
+## Set up OpenTrack
+
+1. **Input:** your tracker (for the Tobii Eye Tracker 5: *Tobii*).
+2. **Output:** *UDP over network*. Open its settings (the button next to it)
+   and set the address to **127.0.0.1** and the port to **4242**. OpenTrack's
+   default address is 192.168.0.2, which the game never sees. The change
+   applies at once.
+3. **Filter:** any. With Accela (OpenTrack's default) poses arrive at 250 Hz;
+   with no filter at the tracker's own rate. The mod relearns the rate either
+   way and has its own smoothing.
+4. **Mapping:** keep the translation curves 1:1. The mod expects real
+   centimetres; it ignores rotations.
+5. Sit normally, facing the screen the game is on, and **centre**:
+   OpenTrack's *Center* key, or the mod's own (Shift+H).
+
+On Linux OpenTrack's hotkeys are X11 key grabs, so when it runs as a Wayland
+window (the default in a Wayland session) they do nothing. Use the mod's keys,
+or try `QT_QPA_PLATFORM=xcb opentrack`, which makes it an X11 window whose
+grabs should see keys while another X11 window such as the game under Wine
+has focus (not tested here). Under Wine the game's sockets are the host's, so
+a native OpenTrack reaches it on 127.0.0.1.
+
+The tracker should sit on the monitor that shows the game: the effect
+measures your head against that screen.
+
+## In the game
+
+**Options → HeadTrack.** Every change applies at once and glides in over a
+fraction of a second, so nothing jumps.
+
+| Option | What it does |
+|---|---|
+| Head tracking | On or off. |
+| Mode | *Centred* (default): your pose when centred gives the game's own view, and moving your head shifts it. *Window*: what a real window would show from where you sit. |
+| Gain | How far the view moves with sideways and vertical head motion. 1 is physically right; 3 to 5 lets you look around a building. |
+| Depth gain | The same for leaning towards and away from the screen; 0 ignores leaning. |
+| Window depth | Where the window plane sits, as a fraction of the distance to the point the camera aims at. |
+| Smoothing | More keeps the view steadier while your head is still; quick moves keep their speed. 0 turns it off. |
+| Screen width, height | The picture's size on your monitor (597 × 336 mm for a 27" 16:9). |
+| Viewing distance | Your eyes' distance from the screen when you sit normally. |
+| Keys | Ctrl+H on/off, Shift+H centre, N hold (the view stays put while you move your head; it glides back on release). |
+| When following a citizen or vehicle | The effect on the follow camera (on). |
+| In photo mode | The effect on the photo-mode camera (off; screenshots then show the shifted view). |
+| While a building tool is active | *Full*, *Gain at most 1* (default: the world under the cursor moves no more than a window would show) or *Off*. |
+| No motion blur from head movement | Motion blur stays for camera moves but ignores what only your head moves (on). |
+| Pose source | *OpenTrack* (centred by OpenTrack) or *Absolute* (a sender that gives the eye's position from the screen centre; the mod takes the first pose as the centre). |
+| UDP port | 4242 unless OpenTrack sends elsewhere. |
+| Invert axes | Flip a tracker axis. |
+
+While you drag with a building tool (or hold a mouse button that started over
+the world) the view holds still, so the world does not move under the cursor.
+
+## How it works
+
+Right after the game's own camera update, the mod moves the camera to where
+your eye would be, scaled into the world, and gives it the off-axis frustum
+through the window: the window is the screen, placed at the depth of the
+point the camera aims at. Right before the next camera update it puts the
+game's camera back, so the game's controllers, collisions and Cinemachine never
+see the shift. Everything in between — culling, rendering, the next frame's
+mouse ray — sees the head-coupled camera. The camera never goes lower above
+ground or water than the game keeps its own, never into a building (a ray
+cast along the move stops it), and its offset is limited softly.
+
+The poses go through a 1€ filter and are resampled to every frame; when the
+face is lost the effect fades out, and when it is found again the view fades
+back in on the new pose instead of sweeping there.
+
+## Limitations
+
+- The effect is off in photo mode by default, and HDRP's Panini projection
+  (a photo-mode option) assumes a centred view.
+- Level of detail and the punctual-light list follow the shifted camera; a save
+  preview, rendered with the game's own camera, can miss a light at its edge.
+- Under a still cursor the world moves with your head: that is the effect.
+  Building tools and the hold key keep it still when it matters.
+- `path = physical` in the debug config uses the physical camera's lens shift
+  instead of an explicit matrix; it changes the camera's field of view for
+  the game's other readers and is kept for comparison only.
+
+## Development
+
+```sh
+dotnet test                       # HeadTrack.Core: the signal, the geometry, the settings
+```
+
+`src/HeadTrack.Core` holds everything that is not Unity (netstandard2.0,
+tested on .NET); `src/HeadTrack` is the mod (net48, the game's assemblies
+referenced from the game folder, never copied).
+
+A `HeadTrack.debug.cfg` next to the mod's DLL (see
+`src/HeadTrack/HeadTrack.debug.cfg.example`) can open a debug channel on
+localhost: `tools/headtrack_send.py` sends test poses and commands (dump the
+camera state, take screenshots, change settings, place the camera, quit the
+game), and `tools/shots.py` compares screenshots. `tools/golden/` generates
+the reference vectors the geometry tests check against with an independent
+NumPy implementation; `tools/decompile.sh` decompiles game assemblies into a
+folder outside the repository.
+
+## Licence
+
+Not chosen yet.
