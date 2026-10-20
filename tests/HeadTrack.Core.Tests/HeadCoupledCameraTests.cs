@@ -118,24 +118,44 @@ public class HeadCoupledCameraTests
         Assert.True(result.Apply);
         Assert.True(result.Clamped);
         Assert.Equal(25.0, (result.View.Position - result.Unclamped).Y, 9);
+        // The window stays where the unclamped view had it: its corners are the picture's.
+        var settings = new HeadTrackSettings();
+        CameraFrame camera = GameCamera();
+        WindowGeometry window = WindowProjection.Window(camera, settings.WindowDepthFraction * 1120,
+            settings.Mapper.ScreenWidthMm, settings.Mapper.ScreenHeightMm);
+        foreach ((double sx, double sy) in new[] { (-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0) })
+        {
+            Vec3 corner = window.Centre + camera.Right * (sx * window.HalfWidth) + camera.Up * (sy * window.HalfHeight);
+            (double x, double y) = WindowProjectionTests.Ndc(result.View.Matrix, result.View.Position, camera, corner);
+            Assert.Equal(sx, x, 9);
+            Assert.Equal(sy, y, 9);
+        }
     }
 
     [Fact]
     public void An_offset_that_would_give_no_view_is_shrunk_until_it_does()
     {
-        var settings = new HeadTrackSettings();
-        settings.Mapper.MaxShiftY = 100;
-        settings.Mapper.MinDepthRatio = 0.001;
-        var head = new HeadCoupledCamera(settings);
-        head.RequestCentre(0);
         var rest = new Vec3(0, 0, 600);
-        Run(head, 0, 2.0, t => rest);
-        // A huge lift that would put the eye far above the window.
-        Vec3 Lift(Vec3 p) => p + new Vec3(0, 50000, 0);
+        Vec3 lean = rest + new Vec3(120, 0, 0);
+        CameraFrame camera = GameCamera();
+        FrameResult free = Run(Centred(rest), 2.0, 4.0, t => lean);
+        double reach = (free.Unclamped - camera.Position).Length;
+        // A clamp that throws any move beyond three quarters of the head's
+        // full one through the window plane, where no view exists: only the
+        // halved offset is left as it is.
+        Vec3 Clamp(Vec3 p) => (p - camera.Position).Length > 0.75 * reach ? p + camera.Forward * 5000 : p;
 
-        FrameResult result = Run(head, 2.0, 4.0, t => rest + new Vec3(0, 0, -100), clamp: Lift);
+        FrameResult result = Run(Centred(rest), 2.0, 4.0, t => lean, clamp: Clamp);
 
-        Assert.True(!result.Apply || result.View.Valid);
+        Assert.True(free.Apply);
+        Assert.True(result.Apply);
+        Assert.True(result.View.Valid);
+        Assert.False(result.Clamped);
+        Vec3 offset = result.Eye - result.Window.NeutralEye;
+        Vec3 fullOffset = free.Eye - free.Window.NeutralEye;
+        Assert.Equal(0.5 * fullOffset.X, offset.X, 9);
+        Assert.Equal(0.5 * fullOffset.Y, offset.Y, 9);
+        Assert.Equal(0.5 * fullOffset.Z, offset.Z, 9);
     }
 
     [Fact]
