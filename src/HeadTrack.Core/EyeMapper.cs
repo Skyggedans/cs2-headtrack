@@ -145,7 +145,7 @@ namespace HeadTrack.Core
                 return neutralEye;
             }
             Vec3 eye = signal.Eye;
-            Capture(now, eye, signal.Presence);
+            Capture(now, eye, signal.Presence, signal.Settling);
             Vec3 reference = CurrentReference(now);
 
             Vec3 mapped;
@@ -188,29 +188,40 @@ namespace HeadTrack.Core
             return Limit(blended, z0, neutralEye);
         }
 
-        private void Capture(double now, Vec3 eye, double presence)
+        /// <summary>
+        /// Averages the head over <see cref="MapperSettings.CentreCaptureSeconds"/>
+        /// of frames in which it is steadily there (full presence, not
+        /// settling); a frame that is not starts the average over. The
+        /// reference then glides to the new centre — the first one from the
+        /// eye itself, so the view starts from neutral either way.
+        /// </summary>
+        private void Capture(double now, Vec3 eye, double presence, bool settling)
         {
             if (!m_Capturing)
             {
                 return;
             }
-            if (presence >= CapturePresence)
+            if (presence < CapturePresence || settling)
             {
-                m_CaptureSum += eye;
-                m_CaptureCount++;
+                m_CaptureSum = Vec3.Zero;
+                m_CaptureCount = 0;
+                return;
             }
-            if (now - m_CaptureStart < m_Settings.CentreCaptureSeconds || m_CaptureCount == 0)
+            if (m_CaptureCount == 0)
+            {
+                m_CaptureStart = now;
+            }
+            m_CaptureSum += eye;
+            m_CaptureCount++;
+            if (now - m_CaptureStart < m_Settings.CentreCaptureSeconds)
             {
                 return;
             }
             Vec3 centre = m_CaptureSum / m_CaptureCount;
             m_Capturing = false;
-            if (HasReference)
-            {
-                m_BlendFrom = CurrentReference(now);
-                m_Blending = true;
-                m_BlendStart = now;
-            }
+            m_BlendFrom = HasReference ? CurrentReference(now) : eye;
+            m_Blending = true;
+            m_BlendStart = now;
             m_Reference = centre;
             m_HasReference = true;
         }

@@ -248,4 +248,81 @@ public class EyeMapperTests
         Assert.Equal(0.0, eye.X, 9);
         Assert.Equal(Z0, eye.Z, 9);
     }
+
+    [Fact]
+    public void A_centre_requested_while_the_face_is_lost_averages_the_head_once_it_is_back()
+    {
+        var settings = Unsaturated();
+        settings.Gain = 4.0;
+        settings.Source = PoseSource.Absolute;
+        var mapper = new EyeMapper(settings);
+        var rest = new Vec3(0, 0, 600);
+        mapper.RequestCentre(0);
+        double now = 0;
+        for (int i = 0; i < 120; i++)
+        {
+            now = i / 60.0;
+            mapper.Map(now, Signal(new Vec3(200, 0, 600), presence: 0), Z0, Neutral);
+        }
+        // The face is back and fades in; the head jitters by 3 mm around its rest.
+        for (int i = 0; i < 120; i++)
+        {
+            now = 2.0 + i / 60.0;
+            double p = Math.Min(1, i / 24.0);
+            mapper.Map(now, Signal(rest + new Vec3(i % 2 == 0 ? 3 : -3, 0, 0), presence: p * p * (3 - 2 * p)), Z0, Neutral);
+        }
+        now += settings.CentreBlendSeconds + 0.1;
+
+        Vec3 eye = mapper.Map(now, Signal(rest), Z0, Neutral);
+
+        Assert.True(Math.Abs(eye.X) < 1.0, $"the rest pose maps {eye.X:F1} mm off the neutral eye");
+    }
+
+    [Fact]
+    public void Frames_that_are_still_settling_do_not_count_towards_a_centre()
+    {
+        var settings = Unsaturated();
+        settings.Source = PoseSource.Absolute;
+        var mapper = new EyeMapper(settings);
+        var rest = new Vec3(0, 0, 600);
+        mapper.RequestCentre(0);
+        double now = 0;
+        for (int i = 0; i < 30; i++)
+        {
+            now = i / 60.0;
+            mapper.Map(now, Signal(new Vec3(150, 0, 600), settling: true), Z0, Neutral);
+        }
+        for (int i = 0; i < 60; i++)
+        {
+            now = 0.5 + i / 60.0;
+            mapper.Map(now, Signal(rest), Z0, Neutral);
+        }
+        now += settings.CentreBlendSeconds + 0.1;
+
+        Vec3 eye = mapper.Map(now, Signal(rest), Z0, Neutral);
+
+        Assert.True(Math.Abs(eye.X) < 1e-6, $"the rest pose maps {eye.X:F1} mm off the neutral eye");
+    }
+
+    [Fact]
+    public void The_first_centre_glides_in_instead_of_snapping()
+    {
+        var settings = Unsaturated();
+        settings.Source = PoseSource.Absolute;
+        var mapper = new EyeMapper(settings);
+        mapper.RequestCentre(0);
+        double worst = 0;
+        Vec3 previous = Neutral;
+        for (int i = 0; i <= 120; i++)
+        {
+            double now = i / 60.0;
+            // The head drifts at 20 mm/s (0.33 mm a frame) while the centre is taken.
+            Vec3 eye = mapper.Map(now, Signal(new Vec3(20 * now, 0, 600)), Z0, Neutral);
+            worst = Math.Max(worst, Math.Abs(eye.X - previous.X));
+            previous = eye;
+        }
+
+        Assert.True(mapper.HasReference);
+        Assert.True(worst < 1.0, $"largest step {worst:F2} mm");
+    }
 }
