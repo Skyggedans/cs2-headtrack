@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/probes/" />
+  <Folder Name="/probes/DotProbe/">
+    <Project Path="probes/DotProbe/HeadTrackDotProbe.csproj" />
+  </Folder>
+  <Folder Name="/probes/FrameOrderProbe/">
+    <Project Path="probes/FrameOrderProbe/HeadTrackProbe.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/HeadTrack/HeadTrack.csproj" />
+  </Folder>
+</Solution>

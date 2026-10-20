@@ -1,0 +1,21 @@
+<Project>
+  <!-- Shared by every project. Game paths can be overridden on the command
+       line (-p:Cs2GameDir=...) or in the environment. -->
+  <PropertyGroup>
+    <!-- Mod.props in the official toolchain uses C# 9: the newest the game's
+         Burst supports. Nothing here uses Burst, but staying on 9 keeps the
+         code buildable by the official toolchain too. -->
+    <LangVersion>9.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <Deterministic>true</Deterministic>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <!-- A reference that resolves to an assembly version other than the one
+         the game ships must fail the build, not warn. -->
+    <MSBuildWarningsAsErrors>$(MSBuildWarningsAsErrors);MSB3277;MSB3268</MSBuildWarningsAsErrors>
+
+    <Cs2GameDir Condition="'$(Cs2GameDir)' == ''">/mnt/D/Games/Cities Skylines II</Cs2GameDir>
+    <Cs2ManagedDir Condition="'$(Cs2ManagedDir)' == ''">$(Cs2GameDir)/Cities2_Data/Managed</Cs2ManagedDir>
+    <Cs2UserDataDir Condition="'$(Cs2UserDataDir)' == ''">$(HOME)/.wine/drive_c/users/$(USER)/AppData/LocalLow/Colossal Order/Cities Skylines II</Cs2UserDataDir>
+    <Cs2ModsDir Condition="'$(Cs2ModsDir)' == ''">$(Cs2UserDataDir)/Mods</Cs2ModsDir>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,13 @@
+bin/
+obj/
+*.user
+.vs/
+.idea/
+# Executor scratch (ledger, review packages): never part of the history.
+.superpowers/
+# Decompiled game code must never land here (tools/decompile.sh refuses to
+# write inside the repository); kept as a second guard.
+decomp/
+# Screenshots and live head-pose recordings stay outside the history.
+shots/
+recordings/

@@ -1,0 +1,63 @@
+<Project>
+  <!-- Imported by every project that builds a mod for the game.
+
+       The project lists the game assemblies it compiles against as
+       Cs2Reference items (file names without .dll) and names its mod folder
+       in Cs2ModFolder. This file turns the items into references with
+       Private=false, so no game assembly is ever copied next to the mod (the
+       game warns about those), and compiles against the game's own mscorlib
+       and netstandard: what the mod runs on.
+
+       Deployment is explicit and never part of a build or a test run:
+         dotnet build -t:Deploy <project>
+       copies the mod and its pdb (plus Cs2DeployExtra files from the output
+       directory) into $(Cs2ModsDir)/$(Cs2ModFolder). -->
+
+  <ItemGroup>
+    <!-- Game.dll and most of the game's assemblies reference netstandard
+         2.1, which the net48 reference assemblies do not have. -->
+    <Cs2Reference Include="netstandard" />
+  </ItemGroup>
+
+  <Target Name="Cs2CheckGame" BeforeTargets="ResolveAssemblyReferences">
+    <Error Condition="!Exists('$(Cs2ManagedDir)/Game.dll')"
+           Text="Game.dll not found in Cs2ManagedDir='$(Cs2ManagedDir)'. Pass -p:Cs2GameDir=&lt;game folder&gt;." />
+  </Target>
+
+  <Target Name="Cs2AddGameReferences" BeforeTargets="ResolveAssemblyReferences" DependsOnTargets="Cs2CheckGame">
+    <ItemGroup>
+      <Reference Include="%(Cs2Reference.Identity)">
+        <HintPath>$(Cs2ManagedDir)/%(Cs2Reference.Identity).dll</HintPath>
+        <Private>false</Private>
+      </Reference>
+    </ItemGroup>
+  </Target>
+
+  <!-- On Linux the SDK compiles net48 projects against the
+       Microsoft.NETFramework.ReferenceAssemblies package, whose mscorlib
+       lacks what Unity's has (Span, KeyValuePair.Deconstruct, ...). Swap in
+       the game's, as the "Modding Toolchain on Linux" wiki page does. -->
+  <Target Name="UseGameMscorlibOnUnix" AfterTargets="ResolveAssemblyReferences" Condition="'$(OS)' != 'Windows_NT'">
+    <ItemGroup>
+      <ReferencePath Remove="@(ReferencePath)" Condition="'%(Filename)' == 'mscorlib'" />
+      <ReferencePath Include="$(Cs2ManagedDir)/mscorlib.dll">
+        <Private>false</Private>
+      </ReferencePath>
+    </ItemGroup>
+  </Target>
+
+  <Target Name="Deploy" DependsOnTargets="Build">
+    <Error Condition="'$(Cs2ModFolder)' == ''" Text="Cs2ModFolder is not set for $(MSBuildProjectName)." />
+    <PropertyGroup>
+      <_Cs2ModDir>$(Cs2ModsDir)/$(Cs2ModFolder)</_Cs2ModDir>
+    </PropertyGroup>
+    <ItemGroup>
+      <_Cs2DeployFile Include="$(TargetPath)" />
+      <_Cs2DeployFile Include="$(TargetDir)$(TargetName).pdb" Condition="Exists('$(TargetDir)$(TargetName).pdb')" />
+      <_Cs2DeployFile Include="@(Cs2DeployExtra->'$(TargetDir)%(Identity)')" />
+    </ItemGroup>
+    <MakeDir Directories="$(_Cs2ModDir)" />
+    <Copy SourceFiles="@(_Cs2DeployFile)" DestinationFolder="$(_Cs2ModDir)" />
+    <Message Importance="high" Text="$(MSBuildProjectName) -> $(_Cs2ModDir): @(_Cs2DeployFile->'%(Filename)%(Extension)', ', ')" />
+  </Target>
+</Project>
