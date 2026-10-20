@@ -9,8 +9,10 @@ using Game.Common;
 using Game.Rendering;
 using Game.SceneFlow;
 using Game.Simulation;
+using Game.Tools;
 using Game.UI.InGame;
 using HeadTrack.Core;
+using HeadTrack.Options;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Jobs;
@@ -41,6 +43,7 @@ namespace HeadTrack.Systems
         private TerrainSystem m_Terrain = null!;
         private WaterSystem m_Water = null!;
         private RaycastSystem m_Raycast = null!;
+        private ToolSystem m_Tools = null!;
         private Action<CameraUpdateSystem, float3>? m_SetCachedPosition;
         private Func<Vec3, Vec3> m_Clamp = null!;
         private Camera? m_LastCamera;
@@ -75,6 +78,7 @@ namespace HeadTrack.Systems
             m_Terrain = World.GetOrCreateSystemManaged<TerrainSystem>();
             m_Water = World.GetOrCreateSystemManaged<WaterSystem>();
             m_Raycast = World.GetOrCreateSystemManaged<RaycastSystem>();
+            m_Tools = World.GetOrCreateSystemManaged<ToolSystem>();
             m_Clamp = ClampPosition;
             m_Modes = new CameraModeTracker(m_CameraUpdate, World.GetOrCreateSystemManaged<GamePanelUISystem>(),
                 World.GetOrCreateSystemManaged<GameScreenUISystem>());
@@ -162,8 +166,13 @@ namespace HeadTrack.Systems
             }
 
             CameraController gameplay = m_CameraUpdate.gamePlayController;
+            // A building tool (anything but the default selection tool) may lower the gain or stop the effect.
+            ToolBaseSystem? tool = m_Tools.activeTool;
+            bool building = tool != null && !(tool is DefaultToolSystem);
+            double maxGain = building && Runtime.WhileBuilding == ToolTracking.GainUpToOne ? 1.0 : double.PositiveInfinity;
             bool gateOpen = Runtime.Enabled && m_Modes.Allowed(Runtime.FollowCamera, Runtime.PhotoMode) && !m_Modes.Switched
-                && !CameraModeTracker.BrainBlending() && !m_Modes.MenuOpen;
+                && !CameraModeTracker.BrainBlending() && !m_Modes.MenuOpen
+                && !(building && Runtime.WhileBuilding == ToolTracking.Off);
 
             Transform transform = camera.transform;
             FrustumTangents rendered = UnityConvert.Tangents(camera.projectionMatrix);
@@ -184,7 +193,7 @@ namespace HeadTrack.Systems
             m_HasGroundWanted = false;
             bool freeze = Runtime.ForceFreeze || m_Keys.Hold || Dragging();
 
-            FrameResult result = Runtime.Head.Compute(now, frame, m_LastDepth, gateOpen, cut, m_Clamp, freeze);
+            FrameResult result = Runtime.Head.Compute(now, frame, m_LastDepth, gateOpen, cut, m_Clamp, freeze, maxGain);
             if (result.Weight > 0)
             {
                 QueueObstacleCast(frame.Near);
