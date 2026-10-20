@@ -1,0 +1,33 @@
+# HeadTrack debug settings. Copy to HeadTrack.debug.cfg next to HeadTrack.dll in
+# <LocalLow>/Colossal Order/Cities Skylines II/Mods/HeadTrack/; read at game start.
+# Every key is optional.
+
+# Head poses: OpenTrack's "UDP over network" output (or tobii-opentrack) sends here.
+pose_address = 127.0.0.1
+pose_port = 4242
+# relative = OpenTrack's centred output; absolute = tobii-opentrack's display-frame eye.
+source = relative
+# The viewing distance OpenTrack's centre stands for (relative source), mm.
+distance_mm = 600
+
+# centred (the default) or window (true window, absolute source only).
+mode = centred
+gain = 1
+depth_gain = 1
+# The window's depth as a fraction of the aimed point's depth.
+window_depth = 1
+screen_width_mm = 597
+screen_height_mm = 336
+max_shift_x = 0.6
+max_shift_y = 0.45
+# explicit = projection matrix; physical = the physical camera's lens shift.
+path = explicit
+pin_lod_fov = 1
+enabled = 1
+
+# Debug channel: text commands on 127.0.0.1 only (0 = off), see tools/headtrack_send.py.
+debug_port = 0
+# Where "shot" writes PNGs: an absolute Windows path; Z:\ is the Linux root under Wine.
+# Keep it outside LocalLow, where the game watches for images.
+# shots_dir = Z:\tmp\headtrack-shots
+status_seconds = 10
