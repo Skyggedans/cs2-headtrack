@@ -6,6 +6,7 @@ using Game.Modding;
 using Game.Rendering;
 using Game.SceneFlow;
 using HarmonyLib;
+using HeadTrack.Debugging;
 using HeadTrack.Patches;
 using HeadTrack.Systems;
 using UnityEngine;
@@ -26,6 +27,7 @@ namespace HeadTrack
         public static readonly ILog Log = LogManager.GetLogger(nameof(HeadTrack)).SetShowsErrorsInUI(false);
 
         private static Harmony? s_Harmony;
+        private static GameObject? s_Host;
 
         public void OnLoad(UpdateSystem updateSystem)
         {
@@ -53,12 +55,25 @@ namespace HeadTrack
                 Log.Error($"Harmony patches failed: {e}");
             }
 
+            s_Host = new GameObject(nameof(HeadTrack));
+            UnityEngine.Object.DontDestroyOnLoad(s_Host);
+            HeadTrackHost host = s_Host.AddComponent<HeadTrackHost>();
+            if (Runtime.DebugPort > 0)
+            {
+                host.StartChannel(Runtime.DebugPort);
+            }
+
             Runtime.Head.RequestCentre(Runtime.Now);
             Log.Info($"ready: path {Runtime.Path}, mode {Runtime.Settings.Mapper.Mode}, source {Runtime.Settings.Mapper.Source}, gain {Runtime.Settings.Mapper.Gain}");
         }
 
         public void OnDispose()
         {
+            if (s_Host != null)
+            {
+                UnityEngine.Object.Destroy(s_Host);
+                s_Host = null;
+            }
             Runtime.StopReceiver();
             CameraRestorer.Restore();
             Runtime.CoverageActive = false;
