@@ -35,7 +35,11 @@ namespace HeadTrack.Core
     {
         public EyeMode Mode { get; set; } = EyeMode.Centred;
 
-        public PoseSource Source { get; set; } = PoseSource.Absolute;
+        /// <summary>
+        /// OpenTrack's "UDP over network" output by default: centred by
+        /// OpenTrack itself, so its centre is the neutral pose.
+        /// </summary>
+        public PoseSource Source { get; set; } = PoseSource.Relative;
 
         /// <summary>Gain on sideways and vertical head motion; 1 is physically right, 3-5 orbits a building.</summary>
         public double Gain { get; set; } = 1.0;

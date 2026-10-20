@@ -29,6 +29,29 @@ public class EyeMapperTests
     private static MapperSettings Unsaturated() => new() { MaxShiftX = 100, MaxShiftY = 100, MinDepthRatio = 0.01, MaxDepthRatio = 100 };
 
     [Fact]
+    public void A_relative_source_is_centred_on_opentracks_centre_without_a_capture()
+    {
+        var mapper = new EyeMapper(new MapperSettings { MaxShiftX = 100, MaxDepthRatio = 100 });
+
+        Vec3 rest = mapper.Map(0.0, Signal(new Vec3(0, 0, 600)), Z0, Neutral);
+        Vec3 moved = mapper.Map(0.0, Signal(new Vec3(40, 0, 600)), Z0, Neutral);
+
+        Assert.Equal(0.0, rest.X, 9);
+        Assert.Equal(Z0, rest.Z, 9);
+        Assert.Equal(40.0, moved.X, 6);
+    }
+
+    [Fact]
+    public void By_default_poses_are_opentracks_centred_udp_output()
+    {
+        var settings = new MapperSettings();
+
+        Assert.Equal(PoseSource.Relative, settings.Source);
+        Assert.Equal(EyeMode.Centred, settings.Mode);
+        Assert.True(new EyeMapper(settings).HasReference);
+    }
+
+    [Fact]
     public void An_absolute_pose_gives_the_display_frame_eye()
     {
         var mapper = new EyeMapper(new MapperSettings { Source = PoseSource.Absolute });
@@ -106,6 +129,7 @@ public class EyeMapperTests
     {
         var settings = Unsaturated();
         settings.Mode = EyeMode.Window;
+        settings.Source = PoseSource.Absolute;
         var mapper = new EyeMapper(settings);
 
         Vec3 eye = mapper.Map(1.0, Signal(new Vec3(-31.5, 84, 571.5)), Z0, Neutral);
@@ -120,6 +144,7 @@ public class EyeMapperTests
     {
         var settings = Unsaturated();
         settings.Mode = EyeMode.Window;
+        settings.Source = PoseSource.Absolute;
         settings.Gain = 3.0;
         var rest = new Vec3(-31.5, 84, 571.5);
         var (mapper, now) = Centred(settings, rest);
@@ -213,9 +238,9 @@ public class EyeMapperTests
     }
 
     [Fact]
-    public void Before_a_centre_exists_the_centred_eye_is_neutral()
+    public void Before_a_centre_exists_an_absolute_centred_eye_is_neutral()
     {
-        var mapper = new EyeMapper(new MapperSettings());
+        var mapper = new EyeMapper(new MapperSettings { Source = PoseSource.Absolute });
 
         Vec3 eye = mapper.Map(0.0, Signal(new Vec3(80, 40, 650)), Z0, Neutral);
 

@@ -4,8 +4,11 @@ and commands for the mod's debug channel.
 
 Poses are OpenTrack "UDP over network" packets (six little-endian doubles:
 X, Y, Z in cm, yaw, pitch, roll in degrees) sent at 33 Hz, built from an eye
-position in mm in the display frame (+x right, +y up, +z towards the user):
-TX = -x/10, TY = y/10, TZ = z/10, as tobii-opentrack does.
+position in mm in the display frame (+x right, +y up, +z towards the user).
+By default (--source relative) they look like OpenTrack's own UDP output,
+centred: TX = -x/10, TY = y/10, TZ = (z - distance)/10 with the head at
+(0, 0, distance) as OpenTrack's centre; --source absolute sends TX = -x/10,
+TY = y/10, TZ = z/10, as tobii-opentrack does.
 
   headtrack_send.py static --eye 0 0 600 --seconds 5
   headtrack_send.py sweep --axis x --amp 80 --period 4 --seconds 20
@@ -28,17 +31,21 @@ import time
 RATE_HZ = 33.0
 
 
-def packet(eye_mm):
+def packet(eye_mm, relative=True, distance=600.0):
     """The 48-byte packet for an eye position in mm."""
     x, y, z = eye_mm
+    if relative:
+        z -= distance
     return struct.pack("<6d", -x / 10.0, y / 10.0, z / 10.0, 0.0, 0.0, 0.0)
 
 
 class PoseStream:
     """Sends the current target eye at RATE_HZ from a background thread; None sends nothing (face lost)."""
 
-    def __init__(self, host, port, rate=RATE_HZ):
+    def __init__(self, host, port, rate=RATE_HZ, relative=True, distance=600.0):
         self.address = (host, port)
+        self.relative = relative
+        self.distance = distance
         self.period = 1.0 / rate
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.lock = threading.Lock()
@@ -74,7 +81,7 @@ class PoseStream:
             with self.lock:
                 eye = self.current()
             if eye is not None:
-                self.socket.sendto(packet(eye), self.address)
+                self.socket.sendto(packet(eye, self.relative, self.distance), self.address)
                 self.sent += 1
             next_send += self.period
             time.sleep(max(0.0, next_send - time.monotonic()))
@@ -171,6 +178,9 @@ def main():
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=4242, help="the mod's pose port")
     parser.add_argument("--debug-port", type=int, default=4250, help="the mod's debug port")
+    parser.add_argument("--source", choices=("relative", "absolute"), default="relative",
+                        help="relative: like OpenTrack's centred UDP output (default); absolute: like tobii-opentrack")
+    parser.add_argument("--distance", type=float, default=600.0, help="the viewing distance OpenTrack's centre stands for, mm")
     sub = parser.add_subparsers(dest="command", required=True)
 
     static = sub.add_parser("static", help="hold one eye position")
@@ -205,7 +215,7 @@ def main():
         print(DebugClient(args.debug_port, args.host).send(" ".join(args.text)))
         return 0
 
-    stream = PoseStream(args.host, args.port)
+    stream = PoseStream(args.host, args.port, relative=args.source == "relative", distance=args.distance)
     try:
         if args.command == "static":
             stream.set(args.eye)

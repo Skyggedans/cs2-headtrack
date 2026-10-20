@@ -6,6 +6,7 @@ using Game.Modding;
 using Game.Rendering;
 using Game.SceneFlow;
 using HarmonyLib;
+using HeadTrack.Core;
 using HeadTrack.Debugging;
 using HeadTrack.Patches;
 using HeadTrack.Systems;
@@ -63,7 +64,12 @@ namespace HeadTrack
                 host.StartChannel(Runtime.DebugPort);
             }
 
-            Runtime.Head.RequestCentre(Runtime.Now);
+            // OpenTrack's output is centred by OpenTrack (its own Center key);
+            // only absolute poses need the mod to capture a centre.
+            if (Runtime.Settings.Mapper.Source == PoseSource.Absolute)
+            {
+                Runtime.Head.RequestCentre(Runtime.Now);
+            }
             Log.Info($"ready: path {Runtime.Path}, mode {Runtime.Settings.Mapper.Mode}, source {Runtime.Settings.Mapper.Source}, gain {Runtime.Settings.Mapper.Gain}");
         }
 
