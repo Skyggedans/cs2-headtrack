@@ -27,6 +27,35 @@ namespace HeadTrack.Core
 
         /// <summary>Quit the game the way the menu does, without saving.</summary>
         Quit,
+
+        /// <summary>Hold the eye as a tool drag would (1) or let it go (0).</summary>
+        Freeze,
+
+        /// <summary>Put the gameplay camera somewhere: view &lt;pivot x&gt; &lt;pivot z&gt; &lt;zoom&gt; &lt;yaw&gt; &lt;pitch&gt;.</summary>
+        View,
+    }
+
+    /// <summary>Where <see cref="DebugVerb.View"/> puts the gameplay camera: pivot (m), zoom (m), angles (degrees).</summary>
+    public readonly struct ViewTarget
+    {
+        public ViewTarget(double pivotX, double pivotZ, double zoom, double yaw, double pitch)
+        {
+            PivotX = pivotX;
+            PivotZ = pivotZ;
+            Zoom = zoom;
+            Yaw = yaw;
+            Pitch = pitch;
+        }
+
+        public double PivotX { get; }
+
+        public double PivotZ { get; }
+
+        public double Zoom { get; }
+
+        public double Yaw { get; }
+
+        public double Pitch { get; }
     }
 
     /// <summary>
@@ -37,12 +66,13 @@ namespace HeadTrack.Core
     {
         private static readonly Regex s_FileName = new Regex("^[A-Za-z0-9_.-]{1,64}$", RegexOptions.CultureInvariant);
 
-        private DebugCommand(DebugVerb verb, string argument, string name, string value)
+        private DebugCommand(DebugVerb verb, string argument, string name, string value, ViewTarget view = default)
         {
             Verb = verb;
             Argument = argument;
             Name = name;
             Value = value;
+            View = view;
         }
 
         public DebugVerb Verb { get; }
@@ -55,6 +85,9 @@ namespace HeadTrack.Core
 
         /// <summary>For <see cref="DebugVerb.Set"/>: the value as text.</summary>
         public string Value { get; }
+
+        /// <summary>For <see cref="DebugVerb.View"/>: where the camera goes.</summary>
+        public ViewTarget View { get; }
 
         public static bool TryParse(string? text, out DebugCommand command, out string? error)
         {
@@ -79,12 +112,30 @@ namespace HeadTrack.Core
                     return true;
                 case "enable":
                 case "pause":
+                case "freeze":
                     if (words.Length != 2 || (words[1] != "0" && words[1] != "1"))
                     {
                         error = $"usage: {verb} 0|1";
                         return false;
                     }
-                    command = new DebugCommand(verb == "enable" ? DebugVerb.Enable : DebugVerb.Pause, words[1], string.Empty, string.Empty);
+                    DebugVerb toggle = verb == "enable" ? DebugVerb.Enable : verb == "pause" ? DebugVerb.Pause : DebugVerb.Freeze;
+                    command = new DebugCommand(toggle, words[1], string.Empty, string.Empty);
+                    return true;
+                case "view":
+                    double[] numbers = new double[5];
+                    bool valid = words.Length == 6;
+                    for (int i = 0; valid && i < 5; i++)
+                    {
+                        valid = double.TryParse(words[i + 1], NumberStyles.Float, CultureInfo.InvariantCulture, out numbers[i])
+                            && !double.IsNaN(numbers[i]) && !double.IsInfinity(numbers[i]);
+                    }
+                    if (!valid || numbers[2] <= 0)
+                    {
+                        error = "usage: view <pivot x> <pivot z> <zoom > 0> <yaw> <pitch> (m, m, m, degrees, degrees)";
+                        return false;
+                    }
+                    command = new DebugCommand(DebugVerb.View, string.Empty, string.Empty, string.Empty,
+                        new ViewTarget(numbers[0], numbers[1], numbers[2], numbers[3], numbers[4]));
                     return true;
                 case "set":
                     if (words.Length != 3)

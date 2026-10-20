@@ -11,6 +11,8 @@ public class DebugCommandTests
     [InlineData("enable 1", DebugVerb.Enable, "1")]
     [InlineData("enable 0", DebugVerb.Enable, "0")]
     [InlineData("pause 1", DebugVerb.Pause, "1")]
+    [InlineData("freeze 1", DebugVerb.Freeze, "1")]
+    [InlineData("freeze 0", DebugVerb.Freeze, "0")]
     [InlineData("centre", DebugVerb.Centre, "")]
     [InlineData("quit", DebugVerb.Quit, "")]
     public void Parses_each_verb(string text, DebugVerb verb, string argument)
@@ -30,8 +32,28 @@ public class DebugCommandTests
         Assert.Equal("3.5", command.Value);
     }
 
+    [Fact]
+    public void View_takes_the_pivot_the_zoom_and_the_angles()
+    {
+        Assert.True(DebugCommand.TryParse("view 1200.5 -340 250 45 60.5", out DebugCommand command, out string? error), error);
+
+        Assert.Equal(DebugVerb.View, command.Verb);
+        Assert.Equal(1200.5, command.View.PivotX);
+        Assert.Equal(-340.0, command.View.PivotZ);
+        Assert.Equal(250.0, command.View.Zoom);
+        Assert.Equal(45.0, command.View.Yaw);
+        Assert.Equal(60.5, command.View.Pitch);
+    }
+
     [Theory]
     [InlineData("")]
+    [InlineData("view 1 2 3 4")]
+    [InlineData("view 1 2 3 4 5 6")]
+    [InlineData("view 1 2 3 4 NaN")]
+    [InlineData("view 1 2 Infinity 4 5")]
+    [InlineData("view 1 2 0 4 5")]
+    [InlineData("view a b c d e")]
+    [InlineData("freeze yes")]
     [InlineData("frobnicate")]
     [InlineData("shot")]
     [InlineData("shot ../etc/passwd")]
