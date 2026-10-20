@@ -131,6 +131,44 @@ public class WindowDepthTests
     }
 
     [Fact]
+    public void A_sideways_slide_of_the_camera_leaves_the_depth_alone()
+    {
+        // Pitch 84 degrees, zoom 300 m, the camera pushed 15 m sideways by collisions.
+        double pitch = 84 * Math.PI / 180;
+        var forward = new Vec3(0, -Math.Sin(pitch), Math.Cos(pitch));
+        var pivot = new Vec3(0, 0, 0);
+        Vec3 slid = pivot - forward * 300 + new Vec3(15, 0, 0);
+
+        double depth = WindowDepth.AimPoint(pivot, slid, forward, zoom: 300, near: 1, far: 90000, zoomMin: 10);
+
+        Assert.Equal(300, depth, 6);
+    }
+
+    [Fact]
+    public void The_depth_is_continuous_where_looking_down_switches_to_the_zoom()
+    {
+        var pivot = new Vec3(0, 0, 0);
+        double Depth(double horizontal)
+        {
+            var forward = new Vec3(0, -Math.Sqrt(1 - horizontal * horizontal), horizontal);
+            Vec3 position = pivot - forward * 300 + new Vec3(15, 0, 0);
+            return WindowDepth.AimPoint(pivot, position, forward, zoom: 300, near: 1, far: 90000, zoomMin: 10);
+        }
+
+        Assert.Equal(Depth(0.1 - 1e-9), Depth(0.1 + 1e-9), 3);
+    }
+
+    [Fact]
+    public void A_nan_pivot_gives_the_nearest_sane_depth()
+    {
+        var forward = new Vec3(0, -Math.Sqrt(0.5), Math.Sqrt(0.5));
+
+        double depth = WindowDepth.AimPoint(new Vec3(double.NaN, 0, 0), new Vec3(0, 1000, -1000), forward, zoom: 1400, near: 1, far: 90000, zoomMin: 10);
+
+        Assert.Equal(10, depth, 9);
+    }
+
+    [Fact]
     public void The_depth_is_clamped_to_a_sane_range()
     {
         var forward = new Vec3(0, -Math.Sqrt(0.5), Math.Sqrt(0.5));
@@ -149,11 +187,20 @@ public class EffectRampTests
     public void It_rises_and_falls_smoothly_over_the_ramp_time()
     {
         var ramp = new EffectRamp(0.4);
-        ramp.Update(0.0, on: true);
-        double mid = ramp.Update(0.2, on: true);
-        double full = ramp.Update(0.45, on: true);
-        double falling = ramp.Update(0.65, on: false);
-        double off = ramp.Update(0.9, on: false);
+        double RunTo(double from, double to, bool on)
+        {
+            double weight = 0;
+            for (int i = 0; from + i * 0.05 <= to + 1e-9; i++)
+            {
+                weight = ramp.Update(from + i * 0.05, on);
+            }
+            return weight;
+        }
+
+        double mid = RunTo(0.0, 0.2, on: true);
+        double full = RunTo(0.25, 0.45, on: true);
+        double falling = RunTo(0.5, 0.65, on: false);
+        double off = RunTo(0.7, 0.9, on: false);
 
         Assert.Equal(0.5, mid, 9);
         Assert.Equal(1.0, full, 9);
@@ -168,10 +215,34 @@ public class EffectRampTests
         ramp.Update(0.0, on: true);
         ramp.Update(1.0, on: true);
 
-        double cut = ramp.Cut();
+        double cut = ramp.Cut(1.0);
 
         Assert.Equal(0.0, cut);
         Assert.Equal(0.0, ramp.Weight);
+    }
+
+    [Fact]
+    public void After_a_cut_it_ramps_in_from_zero_however_long_ago_it_last_ran()
+    {
+        var ramp = new EffectRamp(0.4);
+        ramp.Update(0.0, on: true);
+        ramp.Update(1.0, on: true);
+
+        ramp.Cut(31.0);
+        double first = ramp.Update(31.0 + 1.0 / 60, on: true);
+
+        Assert.True(first < 0.05, $"weight {first:F3} one frame after the cut");
+    }
+
+    [Fact]
+    public void A_long_pause_between_updates_counts_as_one_short_frame()
+    {
+        var ramp = new EffectRamp(0.4);
+        ramp.Update(0.0, on: false);
+
+        double after = ramp.Update(30.0, on: true);
+
+        Assert.True(after < 0.5, $"weight {after:F3} right after a 30 s pause");
     }
 
     [Fact]
@@ -183,30 +254,5 @@ public class EffectRampTests
         double down = ramp.Update(0.11, on: false);
 
         Assert.True(Math.Abs(down - up) < 0.05, $"jumped from {up:F3} to {down:F3}");
-    }
-}
-
-public class ExponentialSmootherTests
-{
-    [Fact]
-    public void It_reaches_63_percent_of_a_step_after_one_time_constant()
-    {
-        var smoother = new ExponentialSmoother(0.3);
-        smoother.Reset(0);
-        double value = 0;
-        for (int i = 0; i < 30; i++)
-        {
-            value = smoother.Update(100, 0.01);
-        }
-
-        Assert.Equal(100 * (1 - Math.Exp(-1)), value, 6);
-    }
-
-    [Fact]
-    public void The_first_value_is_taken_as_is()
-    {
-        var smoother = new ExponentialSmoother(0.3);
-
-        Assert.Equal(42.0, smoother.Update(42, 0.016));
     }
 }

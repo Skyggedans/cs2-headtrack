@@ -139,15 +139,90 @@ public class HeadCoupledCameraTests
     }
 
     [Fact]
-    public void The_window_depth_is_smoothed()
+    public void Zooming_with_the_head_off_centre_keeps_the_pivot_still_on_screen()
     {
         var rest = new Vec3(0, 0, 600);
         HeadCoupledCamera head = Centred(rest);
-        Run(head, 2.0, 3.0, t => rest + new Vec3(50, 0, 0), depth: 1000);
+        Run(head, 2.0, 3.0, t => rest + new Vec3(50, 0, 0));
+        CameraFrame start = GameCamera();
+        Vec3 pivot = start.Position + start.Forward * 1000;
+        double worst = 0;
+        for (int i = 0; i < 60; i++)
+        {
+            // The game zooms from 1000 m to 100 m over a second.
+            double zoom = 1000 - 900 * i / 59.0;
+            var camera = new CameraFrame(pivot - start.Forward * zoom, start.Right, start.Up, start.Forward, start.Near, start.Far, start.Tangents);
+            FrameResult result = head.Compute(3.0 + i / 60.0, camera, zoom, gateOpen: true, cut: false);
+            Assert.True(result.Apply);
+            (double x, double y) = WindowProjectionTests.Ndc(result.View.Matrix, result.View.Position, camera, pivot);
+            worst = Math.Max(worst, Math.Max(Math.Abs(x), Math.Abs(y)));
+        }
 
-        FrameResult jumped = Run(head, 3.0, 3.02, t => rest + new Vec3(50, 0, 0), depth: 2000);
+        Assert.True(worst < 2.0 / 3840, $"the pivot moved {worst * 1920:F1} px");
+    }
 
-        Assert.True(jumped.Depth > 1000 && jumped.Depth < 1500, $"depth {jumped.Depth:F0}");
+    [Fact]
+    public void After_frames_without_compute_the_effect_ramps_in_again()
+    {
+        var rest = new Vec3(0, 0, 600);
+        HeadCoupledCamera head = Centred(rest);
+        Run(head, 2.0, 3.0, t => rest + new Vec3(50, 0, 0));
+        var frames = new List<FrameResult>();
+
+        // Loading: 30 s without a frame.
+        Run(head, 33.0, 33.5, t => rest + new Vec3(50, 0, 0), frames: frames);
+
+        Assert.True(frames[1].Weight < 0.05, $"weight {frames[1].Weight:F3} on the second frame back");
+    }
+
+    [Fact]
+    public void After_a_held_cut_the_effect_ramps_in()
+    {
+        var rest = new Vec3(0, 0, 600);
+        HeadCoupledCamera head = Centred(rest);
+        Run(head, 2.0, 3.0, t => rest + new Vec3(50, 0, 0));
+        CameraFrame camera = GameCamera();
+        for (int i = 0; i < 60; i++)
+        {
+            head.Compute(3.0 + i / 60.0, camera, 1120, gateOpen: true, cut: true);
+        }
+
+        FrameResult first = head.Compute(4.0, camera, 1120, gateOpen: true, cut: false);
+
+        Assert.True(first.Weight < 0.05, $"weight {first.Weight:F3} on the first frame after the cut");
+    }
+
+    [Theory]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    [InlineData(0.0)]
+    [InlineData(-5.0)]
+    public void A_bad_depth_for_one_frame_does_not_end_the_effect(double bad)
+    {
+        var rest = new Vec3(0, 0, 600);
+        HeadCoupledCamera head = Centred(rest);
+        Run(head, 2.0, 3.0, t => rest + new Vec3(50, 0, 0));
+        head.Compute(3.0, GameCamera(), bad, gateOpen: true, cut: false);
+
+        FrameResult after = Run(head, 3.0 + 1.0 / 60, 3.5, t => rest + new Vec3(50, 0, 0));
+
+        Assert.True(after.Apply);
+        Assert.True(after.View.Valid);
+    }
+
+    [Fact]
+    public void A_nan_time_writes_nothing_and_leaves_the_state_alone()
+    {
+        var rest = new Vec3(0, 0, 600);
+        HeadCoupledCamera head = Centred(rest);
+        FrameResult before = Run(head, 2.0, 3.0, t => rest + new Vec3(50, 0, 0));
+
+        FrameResult nan = head.Compute(double.NaN, GameCamera(), 1120, gateOpen: true, cut: false);
+        FrameResult after = Run(head, 3.0, 3.1, t => rest + new Vec3(50, 0, 0));
+
+        Assert.False(nan.Apply);
+        Assert.True(after.Apply);
+        Assert.Equal(before.Weight, after.Weight, 9);
     }
 
     [Fact]

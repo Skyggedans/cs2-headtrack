@@ -119,24 +119,30 @@ namespace HeadTrack.Core
 
         /// <summary>
         /// The depth along the view of the point the camera aims at: the
-        /// pivot's horizontal distance over the horizontal share of the view
-        /// direction. Unlike the pivot's projection on the view axis it stays
-        /// positive when the player looks up and ignores the game's lift and
-        /// collision slide. Looking straight down, the zoom. Clamped to
-        /// [max(2·near, zoomMin), far/2].
+        /// pivot's horizontal offset along the horizontal view direction, over
+        /// that direction's share of the view. On the game's orbit this is the
+        /// zoom; unlike the pivot's projection on the view axis it stays
+        /// positive when the player looks up, and it ignores both the game's
+        /// lift over terrain and a sideways collision slide. Looking straight
+        /// down, the zoom. Clamped to [max(2·near, zoomMin), far/2]; anything
+        /// not finite gives the lower bound.
         /// </summary>
         public static double AimPoint(Vec3 pivot, Vec3 position, Vec3 forward, double zoom, double near, double far, double zoomMin)
         {
-            double horizontal = Math.Sqrt(forward.X * forward.X + forward.Z * forward.Z);
+            double horizontal2 = forward.X * forward.X + forward.Z * forward.Z;
             double depth = zoom;
-            if (horizontal > MinHorizontal)
+            if (horizontal2 > MinHorizontal * MinHorizontal)
             {
                 double dx = pivot.X - position.X;
                 double dz = pivot.Z - position.Z;
-                depth = Math.Sqrt(dx * dx + dz * dz) / horizontal;
+                depth = (dx * forward.X + dz * forward.Z) / horizontal2;
             }
             double min = Math.Max(2 * near, zoomMin);
             double max = 0.5 * far;
+            if (double.IsNaN(depth))
+            {
+                return min;
+            }
             return depth < min ? min : depth > max ? max : depth;
         }
     }
@@ -148,6 +154,9 @@ namespace HeadTrack.Core
     /// </summary>
     public sealed class EffectRamp
     {
+        /// <summary>A longer gap between updates counts as this long (s).</summary>
+        private const double MaxFrameSeconds = 0.1;
+
         private readonly double m_Seconds;
         private double m_Progress;
         private double m_Last;
@@ -162,7 +171,7 @@ namespace HeadTrack.Core
 
         public double Update(double now, bool on)
         {
-            double dt = m_HasLast ? Math.Max(0, now - m_Last) : 0;
+            double dt = m_HasLast ? Math.Min(MaxFrameSeconds, Math.Max(0, now - m_Last)) : 0;
             m_HasLast = true;
             m_Last = now;
             double step = m_Seconds > 0 ? dt / m_Seconds : 1;
@@ -170,44 +179,15 @@ namespace HeadTrack.Core
             return Weight;
         }
 
-        public double Cut()
+        /// <summary>Drops the weight to zero at <paramref name="now"/>; it ramps in from there.</summary>
+        public double Cut(double now)
         {
             m_Progress = 0;
+            m_Last = now;
+            m_HasLast = true;
             return 0;
         }
 
         private static double Smoothstep(double p) => p * p * (3 - 2 * p);
-    }
-
-    /// <summary>A first-order low-pass with a time constant, for slowly varying inputs such as the window depth.</summary>
-    public sealed class ExponentialSmoother
-    {
-        private readonly double m_Tau;
-        private bool m_HasValue;
-        private double m_Value;
-
-        public ExponentialSmoother(double tau)
-        {
-            m_Tau = tau;
-        }
-
-        public double Value => m_Value;
-
-        public double Update(double x, double dt)
-        {
-            if (!m_HasValue)
-            {
-                Reset(x);
-                return x;
-            }
-            m_Value += (x - m_Value) * (1 - Math.Exp(-Math.Max(0, dt) / m_Tau));
-            return m_Value;
-        }
-
-        public void Reset(double x)
-        {
-            m_HasValue = true;
-            m_Value = x;
-        }
     }
 }

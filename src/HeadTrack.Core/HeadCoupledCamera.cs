@@ -12,11 +12,11 @@ namespace HeadTrack.Core
         /// <summary>The window's depth as a fraction of the aimed point's depth (k).</summary>
         public double WindowDepthFraction { get; set; } = 1.0;
 
-        /// <summary>Time constant of the window depth's low-pass (s).</summary>
-        public double DepthSmoothingSeconds { get; set; } = 0.3;
-
         /// <summary>How long the effect takes to come in or go out when a gate opens or closes (s).</summary>
         public double RampSeconds { get; set; } = 0.4;
+
+        /// <summary>A pause between frames longer than this (s: loading, a menu) counts as a cut, so the effect ramps in again.</summary>
+        public double GapSeconds { get; set; } = 0.25;
 
         /// <summary>An eye offset below this (mm) writes nothing, so the game stays bit-exact.</summary>
         public double MinOffsetMm { get; set; } = 1e-3;
@@ -65,7 +65,7 @@ namespace HeadTrack.Core
         /// <summary>The effect's weight (gates and ramps).</summary>
         public double Weight { get; }
 
-        /// <summary>The smoothed depth the window was placed at, before the depth fraction (m).</summary>
+        /// <summary>The depth the window was placed at, before the depth fraction (m).</summary>
         public double Depth { get; }
 
         public HeadSignalOutput Signal { get; }
@@ -82,9 +82,9 @@ namespace HeadTrack.Core
     public sealed class HeadCoupledCamera
     {
         private readonly EffectRamp m_Ramp;
-        private readonly ExponentialSmoother m_Depth;
         private bool m_HasFrame;
         private double m_LastFrame;
+        private double m_LastDepth = double.NaN;
         private bool m_Frozen;
         private bool m_Releasing;
         private double m_ReleaseStart;
@@ -97,7 +97,6 @@ namespace HeadTrack.Core
             Signal = new HeadSignal(settings.Signal);
             Mapper = new EyeMapper(settings.Mapper);
             m_Ramp = new EffectRamp(settings.RampSeconds);
-            m_Depth = new ExponentialSmoother(settings.DepthSmoothingSeconds);
         }
 
         public HeadTrackSettings Settings { get; }
@@ -137,7 +136,8 @@ namespace HeadTrack.Core
         /// The frame at <paramref name="now"/> for the game's
         /// <paramref name="camera"/> aimed at a point <paramref name="depth"/>
         /// metres away. <paramref name="gateOpen"/> false ramps the effect out,
-        /// <paramref name="cut"/> drops it at once. <paramref name="clamp"/>
+        /// <paramref name="cut"/> drops it at once, and so does a pause in
+        /// frames; it ramps in again from there. <paramref name="clamp"/>
         /// may move the wanted position (terrain, water, buildings); the
         /// frustum is built from wherever the camera ends up.
         /// <paramref name="freeze"/> holds the eye where it is (a tool is being
@@ -147,46 +147,52 @@ namespace HeadTrack.Core
         public FrameResult Compute(double now, CameraFrame camera, double depth, bool gateOpen, bool cut, Func<Vec3, Vec3>? clamp = null,
             bool freeze = false)
         {
-            double dt = m_HasFrame ? Math.Max(0, now - m_LastFrame) : 0;
+            if (!IsFinite(now))
+            {
+                return default;
+            }
+            bool paused = m_HasFrame && now - m_LastFrame > Settings.GapSeconds;
             m_HasFrame = true;
             m_LastFrame = now;
 
             HeadSignalOutput signal = Signal.Update(now);
-            double weight;
-            if (cut)
+            double weight = cut || paused ? m_Ramp.Cut(now) : m_Ramp.Update(now, gateOpen);
+            if (IsFinite(depth) && depth > 0)
             {
-                weight = m_Ramp.Cut();
-                m_Depth.Reset(depth);
+                m_LastDepth = depth;
             }
-            else
+            double windowDepth = m_LastDepth;
+            if (!IsFinite(windowDepth) || !IsSane(camera))
             {
-                weight = m_Ramp.Update(now, gateOpen);
+                return default;
             }
-            double smoothedDepth = m_Depth.Update(depth, dt);
-            WindowGeometry window = WindowProjection.Window(camera, Settings.WindowDepthFraction * smoothedDepth,
+            WindowGeometry window = WindowProjection.Window(camera, Settings.WindowDepthFraction * windowDepth,
                 Settings.Mapper.ScreenWidthMm, Settings.Mapper.ScreenHeightMm);
             Vec3 neutral = window.NeutralEye;
             Vec3 mapped = Mapper.Map(now, signal, window.Z0, neutral);
             Vec3 offset = Hold(now, mapped - neutral, freeze) * weight;
 
-            if (!signal.HasEye || weight <= 0 || offset.Length < Settings.MinOffsetMm)
+            if (!signal.HasEye || weight <= 0 || !IsFinite(offset) || offset.Length < Settings.MinOffsetMm)
             {
-                return Skip(window, neutral, camera.Position, weight, smoothedDepth, signal);
+                return Skip(window, neutral, camera.Position, weight, windowDepth, signal);
             }
             for (int attempt = 0; attempt <= Settings.ShrinkAttempts; attempt++)
             {
                 Vec3 eye = neutral + offset;
                 Vec3 wanted = WindowProjection.EyeToWorld(camera, window, eye);
-                Vec3 position = clamp != null ? clamp(wanted) : wanted;
-                OffAxisView view = WindowProjection.ViewFrom(camera, window, position);
-                if (view.Valid)
+                if (IsFinite(wanted))
                 {
-                    bool clamped = (position - wanted).Length > 0;
-                    return new FrameResult(true, view, window, eye, wanted, clamped, weight, smoothedDepth, signal, m_Frozen);
+                    Vec3 position = clamp != null ? clamp(wanted) : wanted;
+                    OffAxisView view = WindowProjection.ViewFrom(camera, window, position);
+                    if (view.Valid)
+                    {
+                        bool clamped = (position - wanted).Length > 0;
+                        return new FrameResult(true, view, window, eye, wanted, clamped, weight, windowDepth, signal, m_Frozen);
+                    }
                 }
                 offset *= 0.5;
             }
-            return Skip(window, neutral, camera.Position, weight, smoothedDepth, signal);
+            return Skip(window, neutral, camera.Position, weight, windowDepth, signal);
         }
 
         /// <summary>The eye offset (mm) to use: held while frozen, gliding from there to the live one once the freeze ends.</summary>
@@ -224,6 +230,19 @@ namespace HeadTrack.Core
 
         private FrameResult Skip(WindowGeometry window, Vec3 neutral, Vec3 position, double weight, double depth, HeadSignalOutput signal) =>
             new FrameResult(false, default, window, neutral, position, false, weight, depth, signal, m_Frozen);
+
+        private static bool IsFinite(double value) => !double.IsNaN(value) && !double.IsInfinity(value);
+
+        private static bool IsFinite(Vec3 v) => IsFinite(v.X) && IsFinite(v.Y) && IsFinite(v.Z);
+
+        /// <summary>A camera the window can be built from: finite, with a frustum of positive width and height.</summary>
+        private static bool IsSane(CameraFrame camera)
+        {
+            FrustumTangents t = camera.Tangents;
+            return IsFinite(camera.Position) && IsFinite(camera.Right) && IsFinite(camera.Up) && IsFinite(camera.Forward)
+                && IsFinite(t.Left) && IsFinite(t.Right) && IsFinite(t.Bottom) && IsFinite(t.Top)
+                && t.Right > t.Left && t.Top > t.Bottom && camera.Near > 0;
+        }
 
         private static double Smoothstep(double p)
         {
