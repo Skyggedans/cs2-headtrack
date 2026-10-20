@@ -213,4 +213,17 @@ public class GroundFloorTests
         Assert.Equal(GroundFloor.OrbitPadding, GroundFloor.Offset(GroundFloor.OrbitPadding, vanillaClearance: 3.0), 12);
         Assert.Equal(5.0, GroundFloor.Offset(GroundFloor.Gameplay(zoom: 10, zoomMin: 10), vanillaClearance: 5.2), 12);
     }
+
+    [Theory]
+    [InlineData(0.3)]
+    [InlineData(-1.5)]
+    public void The_floor_never_lifts_the_camera_above_the_vanilla_one(double vanillaClearance)
+    {
+        // The surface sampled under the vanilla camera can lie above it: the
+        // water system's coarse max-height grid on a steep slope, or a road on
+        // a retaining wall under a follow camera.
+        double offset = GroundFloor.Offset(GroundFloor.OrbitPadding, vanillaClearance);
+
+        Assert.True(offset <= vanillaClearance, $"floor {offset} m above the surface, the vanilla camera {vanillaClearance} m");
+    }
 }

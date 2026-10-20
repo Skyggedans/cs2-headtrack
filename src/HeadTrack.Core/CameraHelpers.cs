@@ -103,9 +103,11 @@ namespace HeadTrack.Core
         /// <summary>
         /// The floor's height above the surface: what the game keeps
         /// (<paramref name="wanted"/>), never more than the vanilla camera
-        /// itself keeps, so a ramp across modes never lifts it.
+        /// itself keeps, so the floor never lifts the camera above where the
+        /// game put it. Below zero where the vanilla camera sits under the
+        /// sampled surface: the floor is then the vanilla camera's own height.
         /// </summary>
-        public static double Offset(double wanted, double vanillaClearance) => Math.Max(0.5, Math.Min(wanted, vanillaClearance));
+        public static double Offset(double wanted, double vanillaClearance) => Math.Min(wanted, vanillaClearance);
     }
 
     /// <summary>
