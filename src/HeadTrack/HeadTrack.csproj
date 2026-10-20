@@ -9,11 +9,28 @@
 
   <ItemGroup>
     <Cs2Reference Include="Game" />
+    <Cs2Reference Include="Cinemachine" />
     <Cs2Reference Include="Colossal.Core" />
-    <Cs2Reference Include="Colossal.Logging" />
     <Cs2Reference Include="Colossal.IO.AssetDatabase" />
-    <Cs2Reference Include="UnityEngine.CoreModule" />
+    <Cs2Reference Include="Colossal.Logging" />
+    <Cs2Reference Include="Colossal.Mathematics" />
+    <Cs2Reference Include="Unity.Collections" />
     <Cs2Reference Include="Unity.Entities" />
+    <Cs2Reference Include="Unity.InputSystem" />
+    <Cs2Reference Include="Unity.Mathematics" />
+    <Cs2Reference Include="UnityEngine.CoreModule" />
+    <Cs2Reference Include="UnityEngine.ImageConversionModule" />
+    <Cs2Reference Include="UnityEngine.ScreenCaptureModule" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../HeadTrack.Core/HeadTrack.Core.csproj" />
+    <!-- The game ships no Harmony; the mod brings the version other CS2 mods use. -->
+    <PackageReference Include="Lib.Harmony" Version="2.2.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Cs2DeployExtra Include="HeadTrack.Core.dll;HeadTrack.Core.pdb;0Harmony.dll" />
   </ItemGroup>
 
   <Import Project="../../build/Cs2Mod.targets" />
