@@ -353,9 +353,10 @@ public class HeadCoupledCameraTests
         var rest = new Vec3(0, 0, 600);
         HeadCoupledCamera head = Centred(rest);
         Run(head, 2.0, 4.0, t => rest + new Vec3(150, 0, 0));
-        var cityB = new List<FrameResult> { head.Compute(9.0, GameCamera(), 1120, gateOpen: true, cut: true) };
+        // 3 s in the menu: shorter than the gap rule, so only the cut can drop the old state.
+        var cityB = new List<FrameResult> { head.Compute(7.0, GameCamera(), 1120, gateOpen: true, cut: true) };
 
-        Run(head, 9.0, 10.0, t => null, frames: cityB);
+        Run(head, 7.0, 8.0, t => null, frames: cityB);
 
         Assert.True(Shown(cityB) < 1.0, $"city B showed a {Shown(cityB):F1} mm offset from city A");
     }
@@ -367,14 +368,15 @@ public class HeadCoupledCameraTests
         // only the ring's last poses reach the core, after a long hold.
         var rest = new Vec3(0, 0, 600);
         HeadCoupledCamera head = Centred(rest);
-        Run(head, 2.0, 4.0, t => rest + new Vec3(150, 0, 0));
-        for (double t = Math.Ceiling(8.5 / Period) * Period; t < 9.0; t += Period)
+        // 300 mm: more than one long frame's speed allowance (150 mm) could hide.
+        Run(head, 2.0, 4.0, t => rest + new Vec3(300, 0, 0));
+        for (double t = Math.Ceiling(6.5 / Period) * Period; t < 7.0; t += Period)
         {
             head.AddEye(t, rest);
         }
-        var cityB = new List<FrameResult> { head.Compute(9.0, GameCamera(), 1120, gateOpen: true, cut: true) };
+        var cityB = new List<FrameResult> { head.Compute(7.0, GameCamera(), 1120, gateOpen: true, cut: true) };
 
-        Run(head, 9.0, 10.0, t => rest, frames: cityB);
+        Run(head, 7.0, 8.0, t => rest, frames: cityB);
 
         Assert.True(Shown(cityB) < 1.0, $"city B showed a {Shown(cityB):F1} mm offset from city A");
     }
@@ -400,5 +402,83 @@ public class HeadCoupledCameraTests
 
         double expected = factor * settings.Signal.MaxSpeed * result.Window.Scale;
         Assert.Equal(expected, result.MaxCameraSpeed, 6);
+    }
+
+    /// <summary>
+    /// OpenTrack holds a lost face's last pose (repeats: alive, no new
+    /// sample) from <paramref name="from"/> to <paramref name="to"/>.
+    /// </summary>
+    private static void Hold(HeadCoupledCamera head, double from, double to, List<FrameResult>? frames = null)
+    {
+        for (double now = from; now < to; now += 1.0 / 60.0)
+        {
+            head.MarkAlive(now);
+            FrameResult result = head.Compute(now, GameCamera(), 1120, gateOpen: true, cut: false);
+            frames?.Add(result);
+        }
+    }
+
+    [Fact]
+    public void A_cut_during_a_reacquisition_fade_shows_nothing_of_the_held_pose()
+    {
+        // The face is held at 150 mm, found again at the centre: the view
+        // fades out from the held pose. A camera change 0.2 s into that fade.
+        var rest = new Vec3(0, 0, 600);
+        HeadCoupledCamera head = Centred(rest);
+        Run(head, 2.0, 3.0, t => rest + new Vec3(150, 0, 0));
+        Hold(head, 3.0, 4.0);
+        Run(head, 4.0, 4.2, t => rest);
+        var after = new List<FrameResult> { head.Compute(4.2, GameCamera(), 1120, gateOpen: true, cut: true) };
+
+        Run(head, 4.2, 5.0, t => rest, frames: after);
+
+        Assert.True(Shown(after) < 1.0, $"after the cut the view showed {Shown(after):F1} mm of the held pose");
+    }
+
+    [Fact]
+    public void Right_after_a_cut_with_poses_arriving_the_face_counts_as_present()
+    {
+        // The effect ramps in once, over the camera's own ramp; a presence
+        // fading in on top of it would make it come in twice as slowly.
+        // A 100 Hz source, so the learnt rate differs from the 33 Hz default.
+        var rest = new Vec3(0, 0, 600);
+        var head = new HeadCoupledCamera(new HeadTrackSettings());
+        head.RequestCentre(0);
+        FrameResult before = default;
+        int sample = 0;
+        for (double now = 0; now < 3.0; now += 1.0 / 60.0)
+        {
+            for (; sample * 0.01 <= now; sample++)
+            {
+                head.AddEye(sample * 0.01, rest + new Vec3(sample * 0.01 > 2.0 ? 40 : 0, 0, 0));
+            }
+            before = head.Compute(now, GameCamera(), 1120, gateOpen: true, cut: false);
+        }
+
+        FrameResult cut = head.Compute(3.0, GameCamera(), 1120, gateOpen: true, cut: true);
+
+        Assert.Equal(1.0, cut.Signal.Presence, 9);
+        Assert.Equal(0.01, before.Signal.Period, 6);
+        Assert.Equal(before.Signal.Period, cut.Signal.Period, 9);
+    }
+
+    [Fact]
+    public void Frames_stopped_for_longer_than_the_gap_show_nothing_of_before_either()
+    {
+        // No cut is passed (nothing reported the gap): the gap rule alone
+        // must drop the old output, as a cut does.
+        var rest = new Vec3(0, 0, 600);
+        HeadCoupledCamera head = Centred(rest);
+        Run(head, 2.0, 4.0, t => rest + new Vec3(300, 0, 0));
+        double resume = 4.0 + head.Settings.GapSeconds + 1;
+        for (double t = Math.Ceiling((resume - 0.5) / Period) * Period; t < resume; t += Period)
+        {
+            head.AddEye(t, rest);
+        }
+        var after = new List<FrameResult>();
+
+        Run(head, resume, resume + 1.0, t => rest, frames: after);
+
+        Assert.True(Shown(after) < 1.0, $"after the gap the view showed {Shown(after):F1} mm of before");
     }
 }
