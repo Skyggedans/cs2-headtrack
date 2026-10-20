@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The mod's logic without Unity: head-pose input, filtering and the
+       window geometry. netstandard2.0, so the net48 mod and the net10.0
+       tests use the very same assembly. -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <AssemblyName>HeadTrack.Core</AssemblyName>
+    <RootNamespace>HeadTrack.Core</RootNamespace>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+</Project>

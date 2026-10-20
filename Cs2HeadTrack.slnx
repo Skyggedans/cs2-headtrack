@@ -7,6 +7,10 @@
     <Project Path="probes/FrameOrderProbe/HeadTrackProbe.csproj" />
   </Folder>
   <Folder Name="/src/">
+    <Project Path="src/HeadTrack.Core/HeadTrack.Core.csproj" />
     <Project Path="src/HeadTrack/HeadTrack.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/HeadTrack.Core.Tests/HeadTrack.Core.Tests.csproj" />
   </Folder>
 </Solution>
