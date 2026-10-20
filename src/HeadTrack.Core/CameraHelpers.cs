@@ -58,24 +58,31 @@ namespace HeadTrack.Core
     /// <summary>The window depth for the gameplay camera.</summary>
     public static class WindowDepth
     {
-        /// <summary>Below this horizontal share of the view direction the camera counts as looking straight down.</summary>
+        /// <summary>Below this horizontal share of the view direction the camera counts as looking straight up.</summary>
         private const double MinHorizontal = 0.1;
 
         /// <summary>
-        /// The depth along the view of the point the camera aims at: the
-        /// pivot's horizontal offset along the horizontal view direction, over
-        /// that direction's share of the view. On the game's orbit this is the
-        /// zoom; unlike the pivot's projection on the view axis it stays
-        /// positive when the player looks up, and it ignores both the game's
-        /// lift over terrain and a sideways collision slide. Looking straight
-        /// down, the zoom. Clamped to [max(2·near, zoomMin), far/2]; anything
-        /// not finite gives the lower bound.
+        /// The depth along the view of the point the camera aims at. Looking
+        /// down, the pivot's own depth along the view: the window plane then
+        /// passes through the pivot, so the aimed ground stays put on screen
+        /// whatever the head does, above the game's lift over the orbit and
+        /// after a collision push along the view alike. Looking up, where the
+        /// game's floor can lift the camera until the pivot lies beside the
+        /// view axis, the pivot's horizontal offset along the horizontal view
+        /// direction over that direction's share of the view: the zoom on the
+        /// orbit, positive at any lift. Both agree on a level view. Looking
+        /// straight up, the zoom. Clamped to [max(2·near, zoomMin), far/2];
+        /// anything not finite gives the lower bound.
         /// </summary>
         public static double AimPoint(Vec3 pivot, Vec3 position, Vec3 forward, double zoom, double near, double far, double zoomMin)
         {
             double horizontal2 = forward.X * forward.X + forward.Z * forward.Z;
             double depth = zoom;
-            if (horizontal2 > MinHorizontal * MinHorizontal)
+            if (forward.Y < 0)
+            {
+                depth = Vec3.Dot(pivot - position, forward);
+            }
+            else if (horizontal2 > MinHorizontal * MinHorizontal)
             {
                 double dx = pivot.X - position.X;
                 double dz = pivot.Z - position.Z;

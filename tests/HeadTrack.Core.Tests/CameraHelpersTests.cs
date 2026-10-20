@@ -61,13 +61,55 @@ public class WindowDepthTests
     }
 
     [Fact]
-    public void Looking_straight_down_the_zoom_is_used()
+    public void Looking_straight_down_the_depth_is_the_pivots_own()
     {
+        // The game keeps the camera 50 m above its orbit here (lift and floor).
         var forward = new Vec3(0, -1, 0.0001).Normalized();
 
         double depth = WindowDepth.AimPoint(new Vec3(0, 0, 0), new Vec3(0, 800, 0), forward, zoom: 750, near: 1, far: 90000, zoomMin: 10);
 
-        Assert.Equal(750, depth, 9);
+        Assert.Equal(800, depth, 3);
+    }
+
+    [Fact]
+    public void A_camera_lifted_above_its_orbit_keeps_the_pivot_still_on_screen()
+    {
+        // CameraController puts the camera half the smallest zoom above its
+        // orbit, and its soft floor lifts it further: here 17 m at pitch 60.
+        CameraFrame lifted = WindowProjectionTests.Camera(30, 60, WindowProjectionTests.GameTangents);
+        var pivot = new Vec3(120, 40, -310);
+        var camera = new CameraFrame(pivot - lifted.Forward * 200 + new Vec3(0, 17, 0), lifted.Right, lifted.Up, lifted.Forward,
+            lifted.Near, lifted.Far, lifted.Tangents);
+
+        double depth = WindowDepth.AimPoint(pivot, camera.Position, camera.Forward, zoom: 200, near: 1, far: 90000, zoomMin: 10);
+        WindowGeometry window = WindowProjection.Window(camera, depth, 597, 336);
+        (double X, double Y) Seen(Vec3 eye)
+        {
+            OffAxisView view = WindowProjection.ViewFrom(camera, window, WindowProjection.EyeToWorld(camera, window, eye));
+            return WindowProjectionTests.Ndc(view.Matrix, view.Position, camera, pivot);
+        }
+
+        (double x0, double y0) = Seen(window.NeutralEye);
+        (double x1, double y1) = Seen(window.NeutralEye + new Vec3(100, -60, -80));
+        Assert.Equal(x0, x1, 9);
+        Assert.Equal(y0, y1, 9);
+    }
+
+    [Fact]
+    public void A_push_along_the_view_keeps_the_depth_continuous_down_to_straight_down()
+    {
+        // CameraCollisionSystem moves the camera along its view line, here 50 m back.
+        var pivot = new Vec3(0, 0, 0);
+        double Depth(double pitchDeg)
+        {
+            double pitch = pitchDeg * Math.PI / 180;
+            var forward = new Vec3(0, -Math.Sin(pitch), Math.Cos(pitch));
+            return WindowDepth.AimPoint(pivot, pivot - forward * 150, forward, zoom: 100, near: 1, far: 90000, zoomMin: 10);
+        }
+
+        Assert.Equal(Depth(84.25), Depth(84.27), 6);
+        Assert.Equal(150, Depth(84.25), 6);
+        Assert.Equal(150, Depth(90), 6);
     }
 
     [Fact]
@@ -85,17 +127,32 @@ public class WindowDepthTests
     }
 
     [Fact]
-    public void The_depth_is_continuous_where_looking_down_switches_to_the_zoom()
+    public void The_depth_is_continuous_where_looking_up_switches_to_the_zoom()
     {
         var pivot = new Vec3(0, 0, 0);
         double Depth(double horizontal)
         {
-            var forward = new Vec3(0, -Math.Sqrt(1 - horizontal * horizontal), horizontal);
+            var forward = new Vec3(0, Math.Sqrt(1 - horizontal * horizontal), horizontal);
             Vec3 position = pivot - forward * 300 + new Vec3(15, 0, 0);
             return WindowDepth.AimPoint(pivot, position, forward, zoom: 300, near: 1, far: 90000, zoomMin: 10);
         }
 
         Assert.Equal(Depth(0.1 - 1e-9), Depth(0.1 + 1e-9), 3);
+    }
+
+    [Fact]
+    public void The_depth_is_continuous_where_the_view_turns_from_down_to_up()
+    {
+        // The game's lift: 5 m above the orbit.
+        var pivot = new Vec3(0, 0, 0);
+        double Depth(double pitchDeg)
+        {
+            double pitch = pitchDeg * Math.PI / 180;
+            var forward = new Vec3(0, -Math.Sin(pitch), Math.Cos(pitch));
+            return WindowDepth.AimPoint(pivot, pivot - forward * 300 + new Vec3(0, 5, 0), forward, zoom: 300, near: 1, far: 90000, zoomMin: 10);
+        }
+
+        Assert.Equal(Depth(1e-6), Depth(-1e-6), 3);
     }
 
     [Fact]
