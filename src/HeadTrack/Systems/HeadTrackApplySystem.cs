@@ -36,6 +36,7 @@ namespace HeadTrack.Systems
 
         private readonly List<PoseSample> m_Samples = new List<PoseSample>(64);
         private readonly ObstacleLimiter m_Obstacles = new ObstacleLimiter();
+        private readonly HotKeys m_Keys = new HotKeys();
         private CameraUpdateSystem m_CameraUpdate = null!;
         private TerrainSystem m_Terrain = null!;
         private WaterSystem m_Water = null!;
@@ -142,6 +143,7 @@ namespace HeadTrack.Systems
             m_LastCamera = camera;
             m_LastMode = mode;
             m_LastController = controller;
+            m_Keys.Update(now, inGame);
             if (!inGame || m_CameraUpdate.activeViewer == null || camera == null)
             {
                 return;
@@ -164,7 +166,7 @@ namespace HeadTrack.Systems
             UpdateObstacles(now, cut, clear);
             m_Base = frame.Position;
             m_HasGroundWanted = false;
-            bool freeze = Runtime.ForceFreeze || Dragging();
+            bool freeze = Runtime.ForceFreeze || m_Keys.Hold || Dragging();
 
             FrameResult result = Runtime.Head.Compute(now, frame, m_LastDepth, gateOpen, cut, m_Clamp, freeze);
             if (result.Weight > 0)
