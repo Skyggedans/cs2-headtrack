@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>HeadTrack</AssemblyName>
+    <RootNamespace>HeadTrack</RootNamespace>
+    <DebugType>portable</DebugType>
+    <Cs2ModFolder>HeadTrack</Cs2ModFolder>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Cs2Reference Include="Game" />
+    <Cs2Reference Include="Colossal.Core" />
+    <Cs2Reference Include="Colossal.Logging" />
+    <Cs2Reference Include="Colossal.IO.AssetDatabase" />
+    <Cs2Reference Include="UnityEngine.CoreModule" />
+    <Cs2Reference Include="Unity.Entities" />
+  </ItemGroup>
+
+  <Import Project="../../build/Cs2Mod.targets" />
+</Project>
