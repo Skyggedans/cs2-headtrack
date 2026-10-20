@@ -35,9 +35,10 @@ developer mode is needed; the mod logs to `Logs/HeadTrack.log`.
    and set the address to **127.0.0.1** and the port to **4242**. OpenTrack's
    default address is 192.168.0.2, which the game never sees. The change
    applies at once.
-3. **Filter:** any. With Accela (OpenTrack's default) poses arrive at 250 Hz;
-   with no filter at the tracker's own rate. The mod relearns the rate either
-   way and has its own smoothing.
+3. **Filter:** none (the empty first entry). The mod smooths the poses with
+   its own 1€ filter and learns the tracker's rate. OpenTrack's default,
+   AccelaHamilton, adds lag of its own and turns a face found again into a
+   glide the mod cannot tell from a head move (see *How it works*).
 4. **Mapping:** keep the translation curves 1:1. The mod expects real
    centimetres; it ignores rotations.
 5. Sit normally, facing the screen the game is on, and **centre**:
@@ -87,18 +88,29 @@ through the window: the window is the screen, placed at the depth of the
 point the camera aims at. Right before the next camera update it puts the
 game's camera back, so the game's controllers, collisions and Cinemachine never
 see the shift. Everything in between — culling, rendering, the next frame's
-mouse ray — sees the head-coupled camera. The camera never goes lower above
-ground or water than the game keeps its own, never into a building (a ray
-cast along the move stops it), and its offset is limited softly.
+mouse ray — sees the head-coupled camera. The camera stays as high above
+ground or water as the game keeps its own, a ray cast along the move keeps it
+out of buildings, and its offset is limited softly.
 
 HDRP's ambient occlusion is corrected for the off-axis view, and save
 previews are rendered with the game's own camera. Moving your head does not
 blur the picture: the game's motion blur already clamps the camera's
 translation.
 
-The poses go through a 1€ filter and are resampled to every frame; when the
-face is lost the effect fades out, and when it is found again the view fades
-back in on the new pose instead of sweeping there.
+The poses go through a 1€ filter and are resampled to every frame. When they
+stop coming (OpenTrack stopped, or a sender of your own that goes quiet while
+the face is lost), the effect fades out, and it fades back in when they
+return. Through OpenTrack the mod cannot see a lost face: OpenTrack sends a
+pose every few milliseconds whatever its tracker reports.
+
+- OpenTrack's Tobii tracker as built for Linux repeats the last pose it saw,
+  so the view holds where your head was. When the face is found more than
+  5 cm from there, the view fades out and back in on the new pose instead of
+  sweeping there. With an OpenTrack filter on, the filter turns that jump into
+  a glide, and the view follows the glide.
+- OpenTrack's stock Tobii tracker reports a zero pose for a lost face: the
+  view jumps as far towards the screen as the mod allows, for as long as the
+  face is gone.
 
 ## Limitations
 
@@ -108,6 +120,12 @@ back in on the new pose instead of sweeping there.
   preview, rendered with the game's own camera, can miss a light at its edge.
 - Under a still cursor the world moves with your head: that is the effect.
   Building tools and the hold key keep it still when it matters.
+- Buildings are checked with one ray along the camera's move, whose result
+  comes a frame late. On a fast turn in a narrow street the camera can be
+  inside a wall for one frame, and the near plane can cut into a balcony or
+  sign that sticks out several metres from that ray.
+- Through OpenTrack a lost face is not seen (see *How it works*): the view
+  holds or, with the stock Tobii tracker, jumps.
 - `path = physical` in the debug config uses the physical camera's lens shift
   instead of an explicit matrix; it changes the camera's field of view for
   the game's other readers and is kept for comparison only.
