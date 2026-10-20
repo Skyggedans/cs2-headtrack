@@ -220,6 +220,7 @@ namespace HeadTrack
                 case "follow_camera":
                 case "photo_mode":
                 case "cover":
+                case "head_blur":
                     bool flag = value == "1" || value.Equals("true", StringComparison.OrdinalIgnoreCase);
                     if (!flag && value != "0" && !value.Equals("false", StringComparison.OrdinalIgnoreCase))
                     {
@@ -239,6 +240,9 @@ namespace HeadTrack
                             break;
                         case "cover":
                             CoverEnabled = flag;
+                            break;
+                        case "head_blur":
+                            SuppressHeadMotionBlur = !flag;
                             break;
                         default:
                             PinLodFov = flag;
