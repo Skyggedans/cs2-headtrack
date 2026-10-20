@@ -127,17 +127,27 @@ public class WindowDepthTests
     }
 
     [Fact]
-    public void The_depth_is_continuous_where_looking_up_switches_to_the_zoom()
+    public void Looking_up_towards_straight_up_the_depth_has_no_step()
     {
+        // The game tilts this far up below 217 m of zoom, or at any zoom with
+        // its legacy camera; CameraCollisionSystem has pushed it 50 m back
+        // along the view line. Straight up there is no horizontal direction,
+        // so the depth must reach the zoom without a jump on the way.
         var pivot = new Vec3(0, 0, 0);
         double Depth(double horizontal)
         {
             var forward = new Vec3(0, Math.Sqrt(1 - horizontal * horizontal), horizontal);
-            Vec3 position = pivot - forward * 300 + new Vec3(15, 0, 0);
-            return WindowDepth.AimPoint(pivot, position, forward, zoom: 300, near: 1, far: 90000, zoomMin: 10);
+            return WindowDepth.AimPoint(pivot, pivot - forward * 350, forward, zoom: 300, near: 1, far: 90000, zoomMin: 10);
         }
 
-        Assert.Equal(Depth(0.1 - 1e-9), Depth(0.1 + 1e-9), 3);
+        double largestStep = 0;
+        for (double h = 0; h < 0.2; h += 1e-4)
+        {
+            largestStep = Math.Max(largestStep, Math.Abs(Depth(h + 1e-4) - Depth(h)));
+        }
+        Assert.True(largestStep < 0.5, $"the depth stepped {largestStep:F2} m");
+        Assert.Equal(350, Depth(0.2), 6);
+        Assert.Equal(300, Depth(0), 6);
     }
 
     [Fact]

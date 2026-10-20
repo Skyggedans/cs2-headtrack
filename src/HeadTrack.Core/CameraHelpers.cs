@@ -58,7 +58,7 @@ namespace HeadTrack.Core
     /// <summary>The window depth for the gameplay camera.</summary>
     public static class WindowDepth
     {
-        /// <summary>Below this horizontal share of the view direction the camera counts as looking straight up.</summary>
+        /// <summary>Below this horizontal share of the view direction, looking up, the depth fades into the zoom.</summary>
         private const double MinHorizontal = 0.1;
 
         /// <summary>
@@ -70,9 +70,10 @@ namespace HeadTrack.Core
         /// game's floor can lift the camera until the pivot lies beside the
         /// view axis, the pivot's horizontal offset along the horizontal view
         /// direction over that direction's share of the view: the zoom on the
-        /// orbit, positive at any lift. Both agree on a level view. Looking
-        /// straight up, the zoom. Clamped to [max(2·near, zoomMin), far/2];
-        /// anything not finite gives the lower bound.
+        /// orbit, positive at any lift. Both agree on a level view. Nearing
+        /// straight up, where there is no horizontal direction to go by, it
+        /// fades smoothly into the zoom. Clamped to [max(2·near, zoomMin),
+        /// far/2]; anything not finite gives the lower bound.
         /// </summary>
         public static double AimPoint(Vec3 pivot, Vec3 position, Vec3 forward, double zoom, double near, double far, double zoomMin)
         {
@@ -82,11 +83,13 @@ namespace HeadTrack.Core
             {
                 depth = Vec3.Dot(pivot - position, forward);
             }
-            else if (horizontal2 > MinHorizontal * MinHorizontal)
+            else if (horizontal2 > 0)
             {
                 double dx = pivot.X - position.X;
                 double dz = pivot.Z - position.Z;
-                depth = (dx * forward.X + dz * forward.Z) / horizontal2;
+                double along = (dx * forward.X + dz * forward.Z) / horizontal2;
+                double weight = Ease.Smoothstep(Math.Sqrt(horizontal2) / MinHorizontal);
+                depth = weight * along + (1 - weight) * zoom;
             }
             double min = Math.Max(2 * near, zoomMin);
             double max = 0.5 * far;
