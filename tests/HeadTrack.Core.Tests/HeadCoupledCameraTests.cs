@@ -377,4 +377,27 @@ public class HeadCoupledCameraTests
 
         Assert.True(Shown(cityB) < 1.0, $"city B showed a {Shown(cityB):F1} mm offset from city A");
     }
+
+    [Theory]
+    [InlineData(1.0, 1.0, 1.0)]
+    [InlineData(4.0, 1.0, 4.0)]
+    [InlineData(1.0, 2.0, 2.0)]
+    [InlineData(0.5, 0.5, 1.0)]
+    public void The_camera_speed_limit_is_the_heads_carried_through_the_gains(double gain, double depthGain, double factor)
+    {
+        // After a stop at a building the allowance grows back at this speed:
+        // at gain 4 the head moves the camera four times as fast as at gain 1.
+        var settings = new HeadTrackSettings();
+        settings.Mapper.Gain = gain;
+        settings.Mapper.DepthGain = depthGain;
+        var head = new HeadCoupledCamera(settings);
+        head.RequestCentre(0);
+        var rest = new Vec3(0, 0, 600);
+        Run(head, 0, 2.0, t => rest);
+
+        FrameResult result = Run(head, 2.0, 3.0, t => rest + new Vec3(30, 0, 0));
+
+        double expected = factor * settings.Signal.MaxSpeed * result.Window.Scale;
+        Assert.Equal(expected, result.MaxCameraSpeed, 6);
+    }
 }

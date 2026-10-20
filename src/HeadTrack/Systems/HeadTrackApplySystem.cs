@@ -353,10 +353,11 @@ namespace HeadTrack.Systems
                 m_Obstacles.Reset();
                 return;
             }
-            // The allowance grows back no faster than the head may move the camera.
-            double scale = Runtime.LastFrame.Window.Scale;
-            double metresPerMm = scale > 0 && !double.IsInfinity(scale) ? scale : 1.0;
-            m_Obstacles.Update(dt, clear, Runtime.Settings.Signal.MaxSpeed * metresPerMm);
+            // The allowance grows back no faster than the head may move the
+            // camera (1 m per head mm until a frame has had a window).
+            double speed = Runtime.LastFrame.MaxCameraSpeed;
+            double release = speed > 0 && !double.IsInfinity(speed) ? speed : Runtime.Settings.Signal.MaxSpeed;
+            m_Obstacles.Update(dt, clear, release);
             Runtime.ObstacleAllowed = m_Obstacles.Allowed;
         }
 
