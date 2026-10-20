@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- A diagnostic mod: logs, at fixed points of a frame, what the game's
+       camera looks like, and changes nothing. It answers whether a managed
+       ECS system built without the official post-processor runs, and in what
+       order the camera is written and read within a frame. Kept as a tool
+       for re-checking the order after a game update; deploy it only when
+       needed and disable it (folder renamed to start with '.') afterwards. -->
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>HeadTrackProbe</AssemblyName>
+    <RootNamespace>HeadTrackProbe</RootNamespace>
+    <DebugType>portable</DebugType>
+    <Cs2ModFolder>HeadTrackProbe</Cs2ModFolder>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Cs2Reference Include="Game" />
+    <Cs2Reference Include="Colossal.Core" />
+    <Cs2Reference Include="Colossal.Logging" />
+    <Cs2Reference Include="Cinemachine" />
+    <Cs2Reference Include="UnityEngine.CoreModule" />
+    <Cs2Reference Include="Unity.Entities" />
+    <Cs2Reference Include="Unity.Mathematics" />
+  </ItemGroup>
+
+  <Import Project="../../build/Cs2Mod.targets" />
+</Project>

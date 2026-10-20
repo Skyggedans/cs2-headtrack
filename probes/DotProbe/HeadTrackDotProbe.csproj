@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Checks that a mod folder whose name starts with '.' is not loaded:
+       it is deployed to Mods/.HeadTrackDotProbe, and passes when the game's
+       Modding.log never mentions HeadTrackDotProbe and no
+       Logs/HeadTrackDotProbe.log appears. Delete the folder after the check. -->
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>HeadTrackDotProbe</AssemblyName>
+    <RootNamespace>HeadTrackDotProbe</RootNamespace>
+    <DebugType>portable</DebugType>
+    <Cs2ModFolder>.HeadTrackDotProbe</Cs2ModFolder>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Cs2Reference Include="Game" />
+    <Cs2Reference Include="Colossal.Core" />
+    <Cs2Reference Include="Colossal.Logging" />
+    <Cs2Reference Include="Unity.Entities" />
+  </ItemGroup>
+
+  <Import Project="../../build/Cs2Mod.targets" />
+</Project>
