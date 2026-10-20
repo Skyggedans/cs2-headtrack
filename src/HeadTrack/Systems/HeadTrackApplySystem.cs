@@ -107,6 +107,7 @@ namespace HeadTrack.Systems
         private void Step()
         {
             double now = FrameTime();
+            Runtime.UpdateListener(now);
             // Read before draining: every packet up to this arrival is then
             // taken, so it is a repeat of a sample already fed, never a new
             // pose still in the ring.

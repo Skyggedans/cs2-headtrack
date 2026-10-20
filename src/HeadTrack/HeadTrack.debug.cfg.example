@@ -1,6 +1,8 @@
 # HeadTrack debug settings. Copy to HeadTrack.debug.cfg next to HeadTrack.dll in
 # <LocalLow>/Colossal Order/Cities Skylines II/Mods/HeadTrack/; read at game start.
-# Every key is optional.
+# Every key is optional. The normal place for settings is the game's Options,
+# HeadTrack page (saved in ModsSettings/HeadTrack/HeadTrack.coc); keys set here
+# are applied on top of it at start and last until the next change there.
 
 # Head poses: OpenTrack's "UDP over network" output (or tobii-opentrack) sends here.
 pose_address = 127.0.0.1

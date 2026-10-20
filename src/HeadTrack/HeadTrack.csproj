@@ -12,6 +12,7 @@
     <Cs2Reference Include="Cinemachine" />
     <Cs2Reference Include="Colossal.Core" />
     <Cs2Reference Include="Colossal.IO.AssetDatabase" />
+    <Cs2Reference Include="Colossal.Localization" />
     <Cs2Reference Include="Colossal.Logging" />
     <Cs2Reference Include="Colossal.Mathematics" />
     <Cs2Reference Include="Unity.Collections" />

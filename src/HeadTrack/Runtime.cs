@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Net;
 using HeadTrack.Core;
+using HeadTrack.Options;
 using UnityEngine;
 
 namespace HeadTrack
@@ -43,7 +44,12 @@ namespace HeadTrack
         public static readonly PoseRing Ring = new PoseRing(64);
         public static readonly HeadCoupledCamera Head = new HeadCoupledCamera(Settings);
 
-        public static UdpPoseReceiver? Receiver;
+        /// <summary>Keeps a receiver on <see cref="PoseAddress"/>:<see cref="PosePort"/>; updated once a frame.</summary>
+        public static readonly PoseListener Listener = new PoseListener(() => new UdpPoseReceiver(Ring));
+
+        /// <summary>The options page, once registered.</summary>
+        public static HeadTrackOptions? Options;
+
         public static Unity.Entities.World? World;
         public static long LastSequence;
         public static bool Enabled = true;
@@ -51,7 +57,16 @@ namespace HeadTrack
         public static bool PinLodFov = true;
 
         public static string PoseAddress = "127.0.0.1";
+        public static IPAddress PoseIPAddress = IPAddress.Loopback;
         public static int PosePort = 4242;
+
+        /// <summary>The options page's choices that are not core settings.</summary>
+        public static bool FollowCamera = true;
+        public static bool PhotoMode;
+        public static ToolTracking WhileBuilding = ToolTracking.GainUpToOne;
+        public static bool SuppressHeadMotionBlur = true;
+
+        private static string? s_ListenerStatus;
         public static int DebugPort;
         public static string ShotsDirectory = string.Empty;
         public static double StatusSeconds = 10.0;
@@ -90,6 +105,61 @@ namespace HeadTrack
         public static double Now => Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency;
 
         public static double TicksToSeconds(long ticks) => ticks / (double)Stopwatch.Frequency;
+
+        /// <summary>The receiver listening now, for its counters.</summary>
+        public static UdpPoseReceiver? Receiver => Listener.Receiver as UdpPoseReceiver;
+
+        /// <summary>
+        /// Hands the options page's values to the core and the mod. Runs on the
+        /// main thread after every change in Options and once at load; the
+        /// debug config and the debug channel's "set" act on the same settings
+        /// and last until the next change in Options.
+        /// </summary>
+        public static void ApplyOptions(HeadTrackOptions o)
+        {
+            Enabled = o.Enabled;
+            MapperSettings m = Settings.Mapper;
+            m.Mode = o.Mode == HeadTrackMode.Window ? EyeMode.Window : EyeMode.Centred;
+            m.Source = o.Source == HeadPoseSource.Absolute ? PoseSource.Absolute : PoseSource.Relative;
+            m.Gain = o.Gain;
+            m.DepthGain = o.DepthGain;
+            m.ScreenWidthMm = o.ScreenWidthMm;
+            m.ScreenHeightMm = o.ScreenHeightMm;
+            m.RelativeDistanceMm = o.ViewingDistanceMm;
+            m.InvertX = o.InvertX;
+            m.InvertY = o.InvertY;
+            m.InvertZ = o.InvertZ;
+            Settings.WindowDepthFraction = o.WindowDepth;
+            int smoothing = Math.Max(Smoothing.Min, Math.Min(Smoothing.Max, o.Smoothing));
+            Settings.Signal.Lateral = Smoothing.Lateral(smoothing);
+            Settings.Signal.Depth = Smoothing.Depth(smoothing);
+            FollowCamera = o.FollowCamera;
+            PhotoMode = o.PhotoMode;
+            WhileBuilding = o.WhileBuilding;
+            SuppressHeadMotionBlur = o.SuppressHeadMotionBlur;
+            PosePort = o.Port >= SettingsLimits.PortMin && o.Port <= SettingsLimits.PortMax ? o.Port : 4242;
+            Validate();
+        }
+
+        /// <summary>Keeps every setting in range after a change, and logs what it had to correct.</summary>
+        public static void Validate()
+        {
+            foreach (string correction in Settings.Validate())
+            {
+                Mod.Log.Warn($"setting corrected: {correction}");
+            }
+        }
+
+        /// <summary>Keeps the pose receiver where the settings say; logs each change of its state.</summary>
+        public static void UpdateListener(double now)
+        {
+            Listener.Update(now, PoseIPAddress, PosePort);
+            if (Listener.Status != s_ListenerStatus)
+            {
+                s_ListenerStatus = Listener.Status;
+                Mod.Log.Info($"head poses: {s_ListenerStatus}");
+            }
+        }
 
         /// <summary>Reads HeadTrack.debug.cfg from the mod folder, if there is one.</summary>
         public static void LoadConfig(string? modDirectory)
@@ -202,10 +272,9 @@ namespace HeadTrack
                 case "screen_height_mm":
                 case "max_shift_x":
                 case "max_shift_y":
-                case "status_seconds":
-                    if (!Number(out number) || number <= 0)
+                    if (!Number(out number))
                     {
-                        error = "expected a positive number";
+                        error = "expected a number";
                         return false;
                     }
                     switch (name)
@@ -217,17 +286,26 @@ namespace HeadTrack
                         case "screen_width_mm": Settings.Mapper.ScreenWidthMm = number; break;
                         case "screen_height_mm": Settings.Mapper.ScreenHeightMm = number; break;
                         case "max_shift_x": Settings.Mapper.MaxShiftX = number; break;
-                        case "max_shift_y": Settings.Mapper.MaxShiftY = number; break;
-                        default: StatusSeconds = number; break;
+                        default: Settings.Mapper.MaxShiftY = number; break;
                     }
+                    Validate();
+                    return true;
+                case "status_seconds":
+                    if (!Number(out number) || number <= 0)
+                    {
+                        error = "expected a positive number";
+                        return false;
+                    }
+                    StatusSeconds = number;
                     return true;
                 case "pose_address":
-                    if (!IPAddress.TryParse(value, out _))
+                    if (!IPAddress.TryParse(value, out IPAddress? address))
                     {
                         error = "expected an IPv4 address";
                         return false;
                     }
                     PoseAddress = value;
+                    PoseIPAddress = address;
                     return true;
                 case "pose_port":
                 case "debug_port":
@@ -257,26 +335,6 @@ namespace HeadTrack
                     error = $"unknown setting '{name}'";
                     return false;
             }
-        }
-
-        public static void StartReceiver()
-        {
-            StopReceiver();
-            Receiver = new UdpPoseReceiver(Ring);
-            if (Receiver.Start(IPAddress.Parse(PoseAddress), PosePort))
-            {
-                Mod.Log.Info($"listening for head poses on UDP {PoseAddress}:{Receiver.Port}");
-            }
-            else
-            {
-                Mod.Log.Error($"head poses: {Receiver.Error}");
-            }
-        }
-
-        public static void StopReceiver()
-        {
-            Receiver?.Dispose();
-            Receiver = null;
         }
     }
 }
