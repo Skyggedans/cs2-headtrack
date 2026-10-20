@@ -1,38 +1,43 @@
 # HeadTrack debug settings. Copy to HeadTrack.debug.cfg next to HeadTrack.dll in
-# <LocalLow>/Colossal Order/Cities Skylines II/Mods/HeadTrack/; read at game start.
-# Every key is optional. The normal place for settings is the game's Options,
-# HeadTrack page (saved in ModsSettings/HeadTrack/HeadTrack.coc); keys set here
-# are applied on top of it at start and last until the next change there.
+# <user data>/Mods/HeadTrack/ (see the README); read at game start.
+# The normal place for settings is the game's Options, HeadTrack page (saved in
+# ModsSettings/HeadTrack/HeadTrack.coc). A key uncommented here replaces the
+# Options value at every start, until the next change there, so uncomment only
+# what you need. The values shown are the defaults, except debug_port and
+# shots_dir, which are examples (the channel is off by default).
 
-# Head poses: OpenTrack's "UDP over network" output (or tobii-opentrack) sends here.
-pose_address = 127.0.0.1
-pose_port = 4242
-# relative = OpenTrack's centred output; absolute = tobii-opentrack's display-frame eye.
-source = relative
-# The viewing distance OpenTrack's centre stands for (relative source), mm.
-distance_mm = 600
-
-# centred (the default) or window (true window, absolute source only).
-mode = centred
-gain = 1
-depth_gain = 1
-# The window's depth as a fraction of the aimed point's depth.
-window_depth = 1
-screen_width_mm = 597
-screen_height_mm = 336
-max_shift_x = 0.6
-max_shift_y = 0.45
-# explicit = projection matrix; physical = the physical camera's lens shift.
-path = explicit
-pin_lod_fov = 1
-enabled = 1
-# The effect on the follow camera (a followed citizen or vehicle) and in photo mode.
-follow_camera = 1
-photo_mode = 0
-
-# Debug channel: text commands on 127.0.0.1 only (0 = off), see tools/headtrack_send.py.
-debug_port = 0
+# Debug channel: text commands on 127.0.0.1 (0 = off), see tools/headtrack_send.py.
+# Any program on the machine can send them, so open it only while testing.
+# debug_port = 4250
 # Where "shot" writes PNGs: an absolute Windows path; Z:\ is the Linux root under Wine.
 # Keep it outside LocalLow, where the game watches for images.
 # shots_dir = Z:\tmp\headtrack-shots
-status_seconds = 10
+# Seconds between status lines in HeadTrack.log.
+# status_seconds = 10
+
+# Head poses: OpenTrack's "UDP over network" output (or another sender) sends here.
+# pose_address = 127.0.0.1
+# pose_port = 4242
+# relative = OpenTrack's centred output; absolute = a sender of the eye's
+# position from the screen centre, such as tobii-opentrack.
+# source = relative
+# The viewing distance OpenTrack's centre stands for (relative source), mm.
+# distance_mm = 600
+
+# centred, or window: what a real window would show from where you sit.
+# mode = centred
+# gain = 1
+# depth_gain = 1
+# The window's depth as a fraction of the aimed point's depth.
+# window_depth = 1
+# screen_width_mm = 597
+# screen_height_mm = 336
+# max_shift_x = 0.6
+# max_shift_y = 0.45
+# explicit = projection matrix; physical = the physical camera's lens shift (for comparison only).
+# path = explicit
+# pin_lod_fov = 1
+# enabled = 1
+# The effect on the follow camera (a followed citizen or vehicle) and in photo mode.
+# follow_camera = 1
+# photo_mode = 0
