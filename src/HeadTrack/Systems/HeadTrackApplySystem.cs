@@ -38,6 +38,7 @@ namespace HeadTrack.Systems
         private Func<Vec3, Vec3> m_Clamp = null!;
         private Camera? m_LastCamera;
         private GameMode m_LastMode;
+        private IGameCameraController? m_LastController;
         private double m_LastDepth = 100;
         private TerrainHeightData m_Height;
         private WaterSurfacesData m_Surfaces;
@@ -90,7 +91,7 @@ namespace HeadTrack.Systems
 
         private void Step()
         {
-            double now = Runtime.Now;
+            double now = FrameTime();
             m_Samples.Clear();
             Runtime.LastSequence = Runtime.Ring.TakeNewer(Runtime.LastSequence, m_Samples);
             foreach (PoseSample sample in m_Samples)
@@ -114,16 +115,19 @@ namespace HeadTrack.Systems
             Camera camera = m_CameraUpdate.activeCamera;
             GameMode mode = gameManager != null ? gameManager.gameMode : GameMode.None;
             bool inGame = gameManager != null && mode == GameMode.Game && !gameManager.isGameLoading;
-            bool cut = camera != m_LastCamera || mode != m_LastMode;
+            IGameCameraController controller = m_CameraUpdate.activeCameraController;
+            // A camera, mode or controller change (photo mode, a cinematic
+            // camera) drops the effect at once; it ramps in again after.
+            bool cut = camera != m_LastCamera || mode != m_LastMode || !ReferenceEquals(controller, m_LastController);
             m_LastCamera = camera;
             m_LastMode = mode;
+            m_LastController = controller;
             if (!inGame || m_CameraUpdate.activeViewer == null || camera == null)
             {
                 return;
             }
 
             CameraController gameplay = m_CameraUpdate.gamePlayController;
-            IGameCameraController controller = m_CameraUpdate.activeCameraController;
             bool isGameplay = gameplay != null && controller != null && ReferenceEquals(controller, gameplay);
             bool gateOpen = Runtime.Enabled && isGameplay && !MapTilesUISystem.mapTileViewActive && !BrainBlending();
 
@@ -188,6 +192,10 @@ namespace HeadTrack.Systems
             camera.transform.position = view.Position.ToVector3();
             if (Runtime.Path == ProjectionPath.Explicit)
             {
+                // On a physical camera HDRP builds the view rays of the sky,
+                // fog and clouds from the symmetric lens; without it, from the
+                // matrix. Restore turns it back on.
+                camera.usePhysicalProperties = false;
                 camera.projectionMatrix = UnityConvert.ToMatrix(view.Matrix);
                 return;
             }
@@ -223,6 +231,10 @@ namespace HeadTrack.Systems
             double zoom = gameplay != null ? gameplay.zoom : zoomMin;
             m_FloorOffset = 0.5 * zoomMin + 0.1 * Math.Max(0, zoom - zoomMin);
         }
+
+        /// <summary>The start of this frame on the clock the samples are stamped with, wherever in the frame this system runs.</summary>
+        private static double FrameTime() =>
+            UnityEngine.Time.unscaledTimeAsDouble + (Runtime.Now - UnityEngine.Time.realtimeSinceStartupAsDouble);
 
         /// <summary>Keeps the camera at least as high above ground or water as the game keeps its own.</summary>
         private Vec3 ClampToGround(Vec3 position)
