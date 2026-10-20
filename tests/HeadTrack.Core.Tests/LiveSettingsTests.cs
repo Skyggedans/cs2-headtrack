@@ -420,4 +420,29 @@ public class LiveSettingsTests
         Assert.Equal(30.0, Offset(frames[(int)(0.95 * Fps)]).X, 1);
         Assert.Equal(90.0, Offset(frames[^1]).X, 1);
     }
+
+    [Theory]
+    [InlineData(800.0)]
+    [InlineData(900.0)]
+    public void A_first_centre_in_window_mode_glides_instead_of_jumping(double distance)
+    {
+        // A true window with an absolute sender, seated beyond the depth
+        // limit's knee: before its first centre the eye is limited around the
+        // neutral eye, after it around the rest pose.
+        var settings = new HeadTrackSettings();
+        settings.Mapper.Mode = EyeMode.Window;
+        settings.Mapper.Source = PoseSource.Absolute;
+        var head = new HeadCoupledCamera(settings);
+        var seat = new Vec3(-31.5, 84, distance);
+
+        List<FrameResult> frames = Run(head, 0, 3.0, _ => seat);
+
+        // Past the 0.4 s ramp-in, no frame may step more than a glide of the
+        // whole difference between the limited and the true eye would.
+        List<FrameResult> settled = frames.Skip((int)(0.5 * Fps)).ToList();
+        double change = (settled[^1].Eye - settled[0].Eye).Length;
+        Assert.True(LargestStep(settled, f => f.Eye) <= GlideStep(change) + 1e-6,
+            $"step {LargestStep(settled, f => f.Eye):F2} mm against a glide of {GlideStep(change):F2} mm");
+        Assert.Equal(distance, settled[^1].Eye.Z, 3);
+    }
 }

@@ -256,7 +256,14 @@ namespace HeadTrack.Core
             WindowGeometry window = WindowProjection.Window(camera, parameters.WindowDepthFraction * windowDepth,
                 parameters.ScreenWidthMm, parameters.ScreenHeightMm);
             Vec3 neutral = window.NeutralEye;
+            bool hadReference = Mapper.HasReference;
             Vec3 mapped = Mapper.Map(now, signal, window.Z0, neutral, parameters);
+            if (!hadReference && Mapper.HasReference && Settings.Mapper.Mode == EyeMode.Window)
+            {
+                // In window mode the first centre moves the limits' origin from
+                // the neutral eye to the rest pose: glide across, as after a switch.
+                Release(now, Settings.GlideSeconds);
+            }
             Vec3 offset = Hold(now, mapped - neutral, freeze) * weight;
 
             if (!signal.HasEye || weight <= 0 || !IsFinite(offset) || offset.Length < Settings.MinOffsetMm)
