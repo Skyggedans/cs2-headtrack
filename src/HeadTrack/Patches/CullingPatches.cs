@@ -78,7 +78,7 @@ namespace HeadTrack.Patches
             var key = new Key(cameraDirection, cameraDirectionRight, cameraPosition, fovFactor);
             if (call == 0)
             {
-                if (!Runtime.CoverageActive)
+                if (!Runtime.CoverageActive || !Runtime.CoverEnabled)
                 {
                     return;
                 }
