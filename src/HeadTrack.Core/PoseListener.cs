@@ -44,7 +44,8 @@ namespace HeadTrack.Core
     /// let go, so a busy port never leaves the mod deaf; a receive thread
     /// that dies is restarted after a pause that doubles with each failure,
     /// up to <see cref="MaxRetrySeconds"/>, and so is a bind that failed.
-    /// <see cref="Status"/> says which, for the log and the options page.
+    /// <see cref="Status"/> says which, for the log; <see cref="State"/> and
+    /// <see cref="ListeningPort"/> say it for the options page.
     /// </summary>
     public sealed class PoseListener : IDisposable
     {
@@ -86,6 +87,9 @@ namespace HeadTrack.Core
                 return m_Wanted == null ? ListenerState.Idle : ListenerState.Down;
             }
         }
+
+        /// <summary>Something is wrong: not listening where asked (still on the old port, or down).</summary>
+        public bool Failing => State == ListenerState.KeptOld || State == ListenerState.Down;
 
         /// <summary>The port the receiver listens on now, or 0 when none runs.</summary>
         public int ListeningPort

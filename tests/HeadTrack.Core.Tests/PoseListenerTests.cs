@@ -201,6 +201,32 @@ public class PoseListenerTests
     }
 
     [Fact]
+    public void Only_a_port_that_could_not_be_had_or_a_dead_receiver_is_a_failure()
+    {
+        // The options page registers before the first Update: an idle
+        // listener must not warn, or every start shows a warning.
+        var busy = new HashSet<int> { 5000 };
+        var made = new List<FakeReceiver>();
+        var listener = new PoseListener(() =>
+        {
+            var receiver = new FakeReceiver(port => !busy.Contains(port));
+            made.Add(receiver);
+            return receiver;
+        });
+        Assert.False(listener.Failing);
+
+        listener.Update(0.0, IPAddress.Loopback, 4242);
+        Assert.False(listener.Failing);
+        listener.Update(0.1, IPAddress.Loopback, 5000);
+        Assert.True(listener.Failing);
+        busy.Remove(5000);
+        listener.Update(0.1 + PoseListener.FirstRetrySeconds, IPAddress.Loopback, 5000);
+        Assert.False(listener.Failing);
+        made[^1].Die("ConnectionReset");
+        Assert.True(listener.Failing);
+    }
+
+    [Fact]
     public void A_first_port_that_cannot_be_had_leaves_it_down()
     {
         using var listener = new PoseListener(() => new FakeReceiver(_ => false));

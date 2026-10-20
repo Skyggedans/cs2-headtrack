@@ -150,13 +150,13 @@ namespace HeadTrack
             if (Listener.Status != s_ListenerStatus)
             {
                 s_ListenerStatus = Listener.Status;
-                if (Listener.State == ListenerState.Listening)
+                if (Listener.Failing)
                 {
-                    Mod.Log.Info($"head poses: {s_ListenerStatus}");
+                    Mod.Log.Warn($"head poses: {s_ListenerStatus}");
                 }
                 else
                 {
-                    Mod.Log.Warn($"head poses: {s_ListenerStatus}");
+                    Mod.Log.Info($"head poses: {s_ListenerStatus}");
                 }
             }
         }

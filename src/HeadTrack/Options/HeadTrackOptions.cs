@@ -190,8 +190,8 @@ namespace HeadTrack.Options
         /// <summary>The port field's warning: the typed text is no port, so the mod keeps the last valid one.</summary>
         private bool PortTextInvalid() => m_PortText != null && !SettingsLimits.TryParsePort(m_PortText, out _, out _);
 
-        /// <summary>The status line's warning: the mod does not listen on the port the page asks for.</summary>
-        private bool ListenerWarning() => Runtime.Listener.State != ListenerState.Listening;
+        /// <summary>The status line's warning: the mod could not listen on the port the page asks for.</summary>
+        private bool ListenerWarning() => Runtime.Listener.Failing;
 
         /// <summary>A button: every option back to its default (the keys have their own).</summary>
         [SettingsUISection(AdvancedTab, ResetGroup)]
