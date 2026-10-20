@@ -224,7 +224,9 @@ public class LiveSettingsTests
         settings.Mapper.RelativeDistanceMm = 700;
         List<FrameResult> frames = RunPoses(head, 2.0, 4.0, _ => new OpenTrackPose(0, 0, 0, 0, 0, 0));
 
-        Assert.False(frames[^1].Apply, $"a centred head maps {Offset(frames[^1]).Length:F1} mm off neutral");
+        // Not even for a frame while the distance glides.
+        double worst = frames.Max(f => Offset(f).Length);
+        Assert.True(worst < 1e-3, $"a centred head maps {worst:F1} mm off neutral");
     }
 
     [Fact]
@@ -477,5 +479,147 @@ public class LiveSettingsTests
         {
             Assert.True((rest[^1].Eye - seat).Length < 0.5, $"eye {rest[^1].Eye} for a head at {seat}");
         }
+    }
+
+    [Fact]
+    public void A_new_viewing_distance_glides_the_eye_in_window_mode()
+    {
+        var settings = new HeadTrackSettings();
+        settings.Mapper.Mode = EyeMode.Window;
+        var head = new HeadCoupledCamera(settings);
+        head.RequestCentre(0);
+        FrameResult before = RunPoses(head, 0, 2.0, _ => new OpenTrackPose(0, 0, 0, 0, 0, 0))[^1];
+
+        settings.Mapper.RelativeDistanceMm = 700;
+        List<FrameResult> frames = Across(before, RunPoses(head, 2.0, 3.0, _ => new OpenTrackPose(0, 0, 0, 0, 0, 0)));
+
+        Assert.True(LargestStep(frames, f => f.Eye) <= GlideStep(100), $"the eye stepped {LargestStep(frames, f => f.Eye):F1} mm in one frame");
+        Assert.Equal(700.0, frames[^1].Eye.Z, 6);
+    }
+
+    [Fact]
+    public void A_new_screen_height_glides_the_camera()
+    {
+        var settings = Absolute();
+        var rest = new Vec3(0, 0, 600);
+        HeadCoupledCamera head = Centred(settings, rest);
+        FrameResult before = Run(head, 2.0, 3.0, _ => rest + new Vec3(40, 0, 0))[^1];
+
+        settings.Mapper.ScreenHeightMm = 420;
+        List<FrameResult> frames = Across(before, Run(head, 3.0, 4.0, _ => rest + new Vec3(40, 0, 0)));
+
+        double moved = (Shift(frames[^1]) - Shift(before)).Length;
+        Assert.True(LargestStep(frames, Shift) <= GlideStep(moved), $"the camera stepped {LargestStep(frames, Shift):F3} m in one frame");
+    }
+
+    [Fact]
+    public void A_new_shift_limit_glides_in_and_applies()
+    {
+        var settings = Absolute();
+        settings.Mapper.MaxShiftX = 0.6;
+        var rest = new Vec3(0, 0, 600);
+        HeadCoupledCamera head = Centred(settings, rest);
+        FrameResult before = Run(head, 2.0, 3.0, _ => rest + new Vec3(300, 0, 0))[^1];
+
+        settings.Mapper.MaxShiftX = 0.3;
+        List<FrameResult> frames = Across(before, Run(head, 3.0, 4.0, _ => rest + new Vec3(300, 0, 0)));
+
+        double moved = (Offset(frames[^1]) - Offset(before)).Length;
+        Assert.True(Offset(frames[^1]).X < 0.3 * settings.Mapper.ScreenWidthMm, "the new limit never applied");
+        // The soft limit is not linear in the limit: half as much again as a linear glide.
+        Assert.True(LargestStep(frames, Offset) <= 1.5 * GlideStep(moved), $"the eye stepped {LargestStep(frames, Offset):F1} mm in one frame");
+    }
+
+    [Fact]
+    public void A_change_during_a_glide_starts_from_where_the_view_is()
+    {
+        var settings = Absolute();
+        var rest = new Vec3(0, 0, 600);
+        HeadCoupledCamera head = Centred(settings, rest);
+        FrameResult before = Run(head, 2.0, 3.0, _ => rest + new Vec3(40, 0, 0))[^1];
+
+        settings.Mapper.Gain = 2;
+        List<FrameResult> first = Run(head, 3.0, 3.1, _ => rest + new Vec3(40, 0, 0));
+        settings.Mapper.Gain = 4;
+        List<FrameResult> frames = Across(before, first);
+        frames.AddRange(Run(head, 3.1, 4.0, _ => rest + new Vec3(40, 0, 0)));
+
+        Assert.True(LargestStep(frames, Offset) <= GlideStep(120), $"the eye stepped {LargestStep(frames, Offset):F1} mm in one frame");
+        Assert.Equal(160.0, Offset(frames[^1]).X, 1);
+    }
+
+    [Fact]
+    public void A_source_switch_with_the_sender_still_sending_glides()
+    {
+        var settings = new HeadTrackSettings();
+        settings.Mapper.Source = PoseSource.Absolute;
+        var head = new HeadCoupledCamera(settings);
+        head.RequestCentre(0);
+        RunPoses(head, 0, 2.0, _ => new OpenTrackPose(3.15, 8.4, 57.15, 0, 0, 0));
+        FrameResult before = RunPoses(head, 2.0, 3.0, _ => new OpenTrackPose(3.15 - 4, 8.4, 57.15, 0, 0, 0))[^1];
+
+        settings.Mapper.Source = PoseSource.Relative;
+        List<FrameResult> frames = Across(before, RunPoses(head, 3.0, 4.0, _ => new OpenTrackPose(3.15 - 4, 8.4, 57.15, 0, 0, 0)));
+
+        double moved = (Offset(frames[^1]) - Offset(before)).Length;
+        Assert.True(LargestStep(frames, Offset) <= GlideStep(moved), $"the eye stepped {LargestStep(frames, Offset):F1} mm in one frame");
+    }
+
+    [Fact]
+    public void An_inverted_axis_mirrors_around_an_off_axis_centre()
+    {
+        // tobii-opentrack's rest pose is never on the tracker's axis.
+        var settings = new HeadTrackSettings();
+        settings.Mapper.Source = PoseSource.Absolute;
+        settings.Mapper.InvertX = true;
+        settings.Mapper.InvertY = true;
+        var head = new HeadCoupledCamera(settings);
+        head.RequestCentre(0);
+        FrameResult rest = RunPoses(head, 0, 3.0, _ => new OpenTrackPose(3.15, 8.4, 57.15, 0, 0, 0))[^1];
+        FrameResult moved = RunPoses(head, 3.0, 5.0, _ => new OpenTrackPose(3.15 - 4, 8.4 + 2, 57.15, 0, 0, 0))[^1];
+
+        Assert.False(rest.Apply, $"the rest pose maps {Offset(rest)} off neutral");
+        Assert.Equal(-40.0, Offset(moved).X, 1);
+        Assert.Equal(-20.0, Offset(moved).Y, 1);
+    }
+
+    [Fact]
+    public void Inverting_an_axis_live_mirrors_around_the_centre_taken_before()
+    {
+        var settings = Absolute();
+        var head = new HeadCoupledCamera(settings);
+        head.RequestCentre(0);
+        RunPoses(head, 0, 2.0, _ => new OpenTrackPose(3.15, 8.4, 57.15, 0, 0, 0));
+        var right = new OpenTrackPose(3.15 - 4, 8.4, 57.15, 0, 0, 0);
+        FrameResult before = RunPoses(head, 2.0, 3.0, _ => right)[^1];
+
+        settings.Mapper.InvertX = true;
+        List<FrameResult> frames = Across(before, RunPoses(head, 3.0, 4.0, _ => right));
+        FrameResult back = RunPoses(head, 4.0, 6.0, _ => new OpenTrackPose(3.15, 8.4, 57.15, 0, 0, 0))[^1];
+
+        Assert.Equal(40.0, Offset(before).X, 1);
+        Assert.Equal(-40.0, Offset(frames[^1]).X, 1);
+        Assert.True(LargestStep(frames, Offset) <= GlideStep(80), $"the eye stepped {LargestStep(frames, Offset):F1} mm in one frame");
+        Assert.False(back.Apply, $"the rest pose maps {Offset(back)} off neutral after the toggle");
+    }
+
+    [Fact]
+    public void A_deep_lean_at_depth_gain_3_follows_the_power_law_down_to_the_limit()
+    {
+        var settings = new MapperSettings { Source = PoseSource.Absolute, DepthGain = 3 };
+        var mapper = new EyeMapper(settings);
+        var neutral = new Vec3(0, 0, 497);
+        HeadSignalOutput At(double z) => new(true, new Vec3(0, 0, z), 1.0, 0.0, Period, 0.035, false, false);
+        mapper.RequestCentre(0);
+        for (int i = 0; i <= 60; i++)
+        {
+            mapper.Map(i / 60.0, At(600), 497, neutral);
+        }
+
+        double small = mapper.Map(2.0, At(580), 497, neutral).Z;
+        double deep = mapper.Map(2.0, At(60), 497, neutral).Z;
+
+        Assert.Equal(497 * Math.Pow(580.0 / 600, 3), small, 6);
+        Assert.True(deep < 1.02 * settings.MinDepthRatio * 497, $"a 540 mm lean stops at {deep:F1} mm");
     }
 }

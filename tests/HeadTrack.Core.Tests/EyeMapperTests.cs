@@ -333,4 +333,60 @@ public class EyeMapperTests
         Assert.True(mapper.HasReference);
         Assert.True(worst < 1.0, $"largest step {worst:F2} mm");
     }
+
+    [Fact]
+    public void Inverted_axes_mirror_the_motion_around_an_off_axis_centre()
+    {
+        // tobii-opentrack's rest pose (-31.5, 84) mm is never on the tracker's axis.
+        var settings = Unsaturated();
+        settings.Source = PoseSource.Absolute;
+        settings.InvertX = true;
+        settings.InvertY = true;
+        var restPose = new Vec3(-31.5, 84, 571.5);
+        var (mapper, now) = Centred(settings, restPose);
+
+        Vec3 rest = mapper.Map(now, Signal(restPose), Z0, Neutral);
+        Vec3 moved = mapper.Map(now, Signal(restPose + new Vec3(40, 20, 0)), Z0, Neutral);
+
+        Assert.Equal(0.0, rest.X, 6);
+        Assert.Equal(0.0, rest.Y, 6);
+        Assert.Equal(-40.0, moved.X, 6);
+        Assert.Equal(-20.0, moved.Y, 6);
+    }
+
+    [Fact]
+    public void Inverted_axes_mirror_around_the_mods_own_centre_off_opentracks_zero()
+    {
+        // The mod's centre key pressed 25 mm right and 15 mm below OpenTrack's centre.
+        var settings = Unsaturated();
+        settings.InvertX = true;
+        settings.InvertY = true;
+        var centre = new Vec3(25, -15, 10);
+        var (mapper, now) = Centred(settings, centre);
+
+        Vec3 rest = mapper.Map(now, Signal(centre), Z0, Neutral);
+        Vec3 moved = mapper.Map(now, Signal(centre + new Vec3(40, 20, 0)), Z0, Neutral);
+
+        Assert.Equal(0.0, rest.X, 6);
+        Assert.Equal(0.0, rest.Y, 6);
+        Assert.Equal(-40.0, moved.X, 6);
+        Assert.Equal(-20.0, moved.Y, 6);
+    }
+
+    [Fact]
+    public void In_window_mode_an_inverted_axis_mirrors_around_the_rest_pose()
+    {
+        var settings = Unsaturated();
+        settings.Source = PoseSource.Absolute;
+        settings.Mode = EyeMode.Window;
+        settings.InvertX = true;
+        var restPose = new Vec3(-31.5, 84, 571.5);
+        var (mapper, now) = Centred(settings, restPose);
+
+        Vec3 rest = mapper.Map(now, Signal(restPose), Z0, Neutral);
+        Vec3 moved = mapper.Map(now, Signal(restPose + new Vec3(40, 0, 0)), Z0, Neutral);
+
+        Assert.Equal(restPose.X, rest.X, 6);
+        Assert.Equal(restPose.X - 40, moved.X, 6);
+    }
 }

@@ -168,8 +168,24 @@ public class PoseListenerTests
     [Fact]
     public void Stopping_a_receiver_is_not_a_fault()
     {
-        var receiver = new UdpPoseReceiver(new PoseRing(4));
+        var ring = new PoseRing(4);
+        var receiver = new UdpPoseReceiver(ring);
         Assert.True(receiver.Start(IPAddress.Loopback, 0), receiver.Error);
+        using (var client = new UdpClient(AddressFamily.InterNetwork))
+        {
+            byte[] packet = OpenTrackPacket.Encode(new OpenTrackPose(1, 0, 60, 0, 0, 0));
+            client.Send(packet, packet.Length, new IPEndPoint(IPAddress.Loopback, receiver.Port));
+        }
+        var taken = new List<PoseSample>();
+        var watch = Stopwatch.StartNew();
+        while (taken.Count == 0 && watch.Elapsed < TimeSpan.FromSeconds(3))
+        {
+            ring.TakeNewer(0, taken);
+            Thread.Sleep(5);
+        }
+        Assert.NotEmpty(taken);
+        // The thread is back in its blocking receive, which the stop interrupts.
+        Thread.Sleep(50);
 
         receiver.Dispose();
 
