@@ -56,7 +56,7 @@ namespace HeadTrack.Systems
         private bool m_CastPending;
         private bool m_HasObstacleUpdate;
         private double m_LastObstacleUpdate;
-        private bool m_DragOverWorld;
+        private readonly ViewHold m_Hold = new ViewHold();
         private bool m_Skipped;
         private double m_LastDepth = 100;
         private TerrainHeightData m_Height;
@@ -196,7 +196,7 @@ namespace HeadTrack.Systems
             UpdateObstacles(now, cut, clear);
             m_Base = frame.Position;
             m_HasGroundWanted = false;
-            bool freeze = Runtime.ForceFreeze || m_Keys.Hold || Dragging();
+            bool freeze = HoldView();
 
             FrameResult result = Runtime.Head.Compute(now, frame, m_LastDepth, gateOpen, cut, m_Clamp, freeze, maxGain);
             if (result.Weight > 0)
@@ -300,24 +300,20 @@ namespace HeadTrack.Systems
             UnityEngine.Time.unscaledTimeAsDouble + (Runtime.Now - UnityEngine.Time.realtimeSinceStartupAsDouble);
 
         /// <summary>
-        /// A mouse button held since a press over the world, not the UI: a
-        /// tool is being dragged or the camera turned, so the world must stay
-        /// put under the cursor.
+        /// The view holds still for the debug freeze, the hold key, or a mouse
+        /// button held since a press over the world, not the UI: a tool is
+        /// being dragged or the camera turned, so the world must stay put
+        /// under the cursor.
         /// </summary>
-        private bool Dragging()
+        private bool HoldView()
         {
             UnityEngine.InputSystem.Mouse? mouse = UnityEngine.InputSystem.Mouse.current;
-            if (mouse == null || !(mouse.leftButton.isPressed || mouse.rightButton.isPressed || mouse.middleButton.isPressed))
-            {
-                m_DragOverWorld = false;
-                return false;
-            }
-            if (mouse.leftButton.wasPressedThisFrame || mouse.rightButton.wasPressedThisFrame || mouse.middleButton.wasPressedThisFrame)
-            {
-                Game.Input.InputManager input = Game.Input.InputManager.instance;
-                m_DragOverWorld = input != null && input.controlOverWorld;
-            }
-            return m_DragOverWorld;
+            bool held = mouse != null && (mouse.leftButton.isPressed || mouse.rightButton.isPressed || mouse.middleButton.isPressed);
+            bool pressed = mouse != null
+                && (mouse.leftButton.wasPressedThisFrame || mouse.rightButton.wasPressedThisFrame || mouse.middleButton.wasPressedThisFrame);
+            Game.Input.InputManager input = Game.Input.InputManager.instance;
+            bool overWorld = input != null && input.controlOverWorld;
+            return m_Hold.Update(Runtime.ForceFreeze, m_Keys.Hold, held, pressed, overWorld);
         }
 
         /// <summary>
