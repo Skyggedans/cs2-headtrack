@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace HeadTrack.Core
 {
@@ -26,6 +27,75 @@ namespace HeadTrack.Core
 
         /// <summary>How long the camera takes to glide back to the head when a freeze ends (s).</summary>
         public double FreezeReleaseSeconds { get; set; } = 0.3;
+
+        /// <summary>
+        /// How long a changed setting takes to glide in (s): a gain, depth
+        /// gain, window depth, screen, viewing distance, limit or inversion,
+        /// and a switch of mode or source. 0 applies at once.
+        /// </summary>
+        public double GlideSeconds { get; set; } = 0.4;
+
+        /// <summary>
+        /// Keeps every setting inside <see cref="SettingsLimits"/>: what is not
+        /// a number becomes the default, the rest is clamped; durations that
+        /// may be 0 (at once) stay at or above 0, those that must not (the gap,
+        /// the presence timeout) are raised. Returns what it changed, for the log.
+        /// </summary>
+        public IReadOnlyList<string> Validate()
+        {
+            var c = new List<string>();
+            var d = new HeadTrackSettings();
+            WindowDepthFraction = SettingsLimits.Check(c, "window_depth", WindowDepthFraction, d.WindowDepthFraction,
+                SettingsLimits.WindowDepthMin, SettingsLimits.WindowDepthMax);
+            RampSeconds = SettingsLimits.Check(c, "ramp_seconds", RampSeconds, d.RampSeconds, 0, SettingsLimits.SecondsMax);
+            GapSeconds = SettingsLimits.Check(c, "gap_seconds", GapSeconds, d.GapSeconds, SettingsLimits.GapSecondsMin, SettingsLimits.GapSecondsMax);
+            MinOffsetMm = SettingsLimits.Check(c, "min_offset_mm", MinOffsetMm, d.MinOffsetMm, 0, 10);
+            ShrinkAttempts = SettingsLimits.Check(c, "shrink_attempts", ShrinkAttempts, 0, 10);
+            FreezeReleaseSeconds = SettingsLimits.Check(c, "freeze_release_seconds", FreezeReleaseSeconds, d.FreezeReleaseSeconds, 0, SettingsLimits.SecondsMax);
+            GlideSeconds = SettingsLimits.Check(c, "glide_seconds", GlideSeconds, d.GlideSeconds, 0, SettingsLimits.SecondsMax);
+
+            MapperSettings m = Mapper, dm = d.Mapper;
+            m.Gain = SettingsLimits.Check(c, "gain", m.Gain, dm.Gain, SettingsLimits.GainMin, SettingsLimits.GainMax);
+            m.DepthGain = SettingsLimits.Check(c, "depth_gain", m.DepthGain, dm.DepthGain, SettingsLimits.DepthGainMin, SettingsLimits.DepthGainMax);
+            m.RelativeDistanceMm = SettingsLimits.Check(c, "distance_mm", m.RelativeDistanceMm, dm.RelativeDistanceMm,
+                SettingsLimits.ViewingDistanceMinMm, SettingsLimits.ViewingDistanceMaxMm);
+            m.ScreenWidthMm = SettingsLimits.Check(c, "screen_width_mm", m.ScreenWidthMm, dm.ScreenWidthMm,
+                SettingsLimits.ScreenWidthMinMm, SettingsLimits.ScreenWidthMaxMm);
+            m.ScreenHeightMm = SettingsLimits.Check(c, "screen_height_mm", m.ScreenHeightMm, dm.ScreenHeightMm,
+                SettingsLimits.ScreenHeightMinMm, SettingsLimits.ScreenHeightMaxMm);
+            m.MaxShiftX = SettingsLimits.Check(c, "max_shift_x", m.MaxShiftX, dm.MaxShiftX, SettingsLimits.MaxShiftMin, SettingsLimits.MaxShiftMax);
+            m.MaxShiftY = SettingsLimits.Check(c, "max_shift_y", m.MaxShiftY, dm.MaxShiftY, SettingsLimits.MaxShiftMin, SettingsLimits.MaxShiftMax);
+            m.MinDepthRatio = SettingsLimits.Check(c, "min_depth_ratio", m.MinDepthRatio, dm.MinDepthRatio,
+                SettingsLimits.MinDepthRatioMin, SettingsLimits.MinDepthRatioMax);
+            m.MaxDepthRatio = SettingsLimits.Check(c, "max_depth_ratio", m.MaxDepthRatio, dm.MaxDepthRatio,
+                SettingsLimits.MaxDepthRatioMin, SettingsLimits.MaxDepthRatioMax);
+            m.CentreCaptureSeconds = SettingsLimits.Check(c, "centre_capture_seconds", m.CentreCaptureSeconds, dm.CentreCaptureSeconds, 0, SettingsLimits.SecondsMax);
+            m.CentreBlendSeconds = SettingsLimits.Check(c, "centre_blend_seconds", m.CentreBlendSeconds, dm.CentreBlendSeconds, 0, SettingsLimits.SecondsMax);
+
+            SignalSettings s = Signal, ds = d.Signal;
+            s.Lateral = SettingsLimits.Check(c, "lateral", s.Lateral, ds.Lateral);
+            s.Depth = SettingsLimits.Check(c, "depth", s.Depth, ds.Depth);
+            s.PresenceTimeout = SettingsLimits.Check(c, "presence_timeout", s.PresenceTimeout, ds.PresenceTimeout,
+                SettingsLimits.PresenceTimeoutMin, SettingsLimits.PresenceTimeoutMax);
+            s.FadeOut = SettingsLimits.Check(c, "fade_out", s.FadeOut, ds.FadeOut, 0, SettingsLimits.SecondsMax);
+            s.FadeIn = SettingsLimits.Check(c, "fade_in", s.FadeIn, ds.FadeIn, 0, SettingsLimits.SecondsMax);
+            s.JumpAfterHoldMm = SettingsLimits.Check(c, "jump_after_hold_mm", s.JumpAfterHoldMm, ds.JumpAfterHoldMm, 1, 1000);
+            s.HoldSeconds = SettingsLimits.Check(c, "hold_seconds", s.HoldSeconds, ds.HoldSeconds, 0.05, 10);
+            s.MaxSpeed = SettingsLimits.Check(c, "max_speed", s.MaxSpeed, ds.MaxSpeed, 50, 1e5);
+            s.MaxDelay = SettingsLimits.Check(c, "max_delay", s.MaxDelay, ds.MaxDelay, 0, 0.5);
+            s.MaxExtrapolation = SettingsLimits.Check(c, "max_extrapolation", s.MaxExtrapolation, ds.MaxExtrapolation, 0, 0.1);
+            s.MaxFrameSeconds = SettingsLimits.Check(c, "max_frame_seconds", s.MaxFrameSeconds, ds.MaxFrameSeconds, 0.01, 1);
+            s.MinPeriod = SettingsLimits.Check(c, "min_period", s.MinPeriod, ds.MinPeriod, 5e-4, 0.05);
+            s.MaxPeriod = SettingsLimits.Check(c, "max_period", s.MaxPeriod, ds.MaxPeriod, 0.01, 1);
+            if (!(s.MinPeriod < s.MaxPeriod))
+            {
+                c.Add($"min_period {s.MinPeriod} >= max_period {s.MaxPeriod}: both reset");
+                s.MinPeriod = ds.MinPeriod;
+                s.MaxPeriod = ds.MaxPeriod;
+            }
+            s.NominalPeriod = SettingsLimits.Check(c, "nominal_period", s.NominalPeriod, ds.NominalPeriod, s.MinPeriod, s.MaxPeriod);
+            return c;
+        }
     }
 
     /// <summary>What to do with the camera this frame.</summary>

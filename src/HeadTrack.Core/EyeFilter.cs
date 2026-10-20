@@ -17,6 +17,9 @@ namespace HeadTrack.Core
         public double Beta { get; }
 
         public double DCutoff { get; }
+
+        /// <summary>No smoothing: an infinite cutoff passes every sample through.</summary>
+        public static OneEuroParameters Off => new OneEuroParameters(double.PositiveInfinity, 0, 1);
     }
 
     /// <summary>
