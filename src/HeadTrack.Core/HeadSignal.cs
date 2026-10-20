@@ -314,6 +314,23 @@ namespace HeadTrack.Core
             return new HeadSignalOutput(true, value, Smoothstep(m_PresenceProgress), age, period, m_Delay, held, settling);
         }
 
+        /// <summary>
+        /// Forgets what the signal showed before a cut (loading, a menu, a
+        /// camera change), so nothing from before it shows after: the output
+        /// starts afresh on the live track, a pending fade-out of a
+        /// re-acquisition is dropped, and the presence is the source's own —
+        /// 1 while packets arrive, 0 once they stopped. The samples and the
+        /// rate stay.
+        /// </summary>
+        public void Recut(double now)
+        {
+            m_HasOutput = false;
+            m_Dipping = false;
+            m_RestartPending = false;
+            double age = m_HasSample ? now - Math.Max(m_LastSample, m_LastAlive) : double.PositiveInfinity;
+            m_PresenceProgress = age <= m_Settings.PresenceTimeout ? 1 : 0;
+        }
+
         public void Reset()
         {
             m_Filter.Reset();

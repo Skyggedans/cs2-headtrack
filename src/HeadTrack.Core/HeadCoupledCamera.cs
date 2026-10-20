@@ -244,6 +244,11 @@ namespace HeadTrack.Core
 
             Switches(now);
             m_Ramp.Seconds = Settings.RampSeconds;
+            if (cut || paused)
+            {
+                // The effect ramps in from nothing: nothing the signal showed before may come with it.
+                Signal.Recut(now);
+            }
             HeadSignalOutput signal = Signal.Update(now);
             double weight = cut || paused ? m_Ramp.Cut(now) : m_Ramp.Update(now, gateOpen);
             // While nothing shows, a new setting may apply at once.

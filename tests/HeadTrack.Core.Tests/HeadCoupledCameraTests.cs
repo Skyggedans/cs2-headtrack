@@ -340,4 +340,41 @@ public class HeadCoupledCameraTests
         Assert.Equal(0.0, first.Weight, 9);
         Assert.Equal(1.0, later.Weight, 9);
     }
+
+    /// <summary>The largest eye offset (mm) the frames show.</summary>
+    private static double Shown(IEnumerable<FrameResult> frames) =>
+        frames.Select(f => f.Apply ? (f.Eye - f.Window.NeutralEye).Length : 0.0).DefaultIfEmpty(0).Max();
+
+    [Fact]
+    public void A_city_loaded_while_the_tracker_was_closed_shows_nothing_of_the_last_one()
+    {
+        // City A with the head leant; OpenTrack closed in the main menu; city B.
+        var rest = new Vec3(0, 0, 600);
+        HeadCoupledCamera head = Centred(rest);
+        Run(head, 2.0, 4.0, t => rest + new Vec3(150, 0, 0));
+        var cityB = new List<FrameResult> { head.Compute(9.0, GameCamera(), 1120, gateOpen: true, cut: true) };
+
+        Run(head, 9.0, 10.0, t => null, frames: cityB);
+
+        Assert.True(Shown(cityB) < 1.0, $"city B showed a {Shown(cityB):F1} mm offset from city A");
+    }
+
+    [Fact]
+    public void A_city_loaded_after_the_head_moved_shows_nothing_of_the_last_one()
+    {
+        // City A with the head leant; during the load the head sits back and
+        // only the ring's last poses reach the core, after a long hold.
+        var rest = new Vec3(0, 0, 600);
+        HeadCoupledCamera head = Centred(rest);
+        Run(head, 2.0, 4.0, t => rest + new Vec3(150, 0, 0));
+        for (double t = Math.Ceiling(8.5 / Period) * Period; t < 9.0; t += Period)
+        {
+            head.AddEye(t, rest);
+        }
+        var cityB = new List<FrameResult> { head.Compute(9.0, GameCamera(), 1120, gateOpen: true, cut: true) };
+
+        Run(head, 9.0, 10.0, t => rest, frames: cityB);
+
+        Assert.True(Shown(cityB) < 1.0, $"city B showed a {Shown(cityB):F1} mm offset from city A");
+    }
 }
