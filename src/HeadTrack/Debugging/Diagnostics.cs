@@ -4,7 +4,6 @@ using System.Reflection;
 using System.Text;
 using Game.Rendering;
 using HeadTrack.Core;
-using HeadTrack.Patches;
 using UnityEngine;
 using UnityEngine.Rendering.HighDefinition;
 
@@ -45,9 +44,7 @@ namespace HeadTrack.Debugging
             }
             Add("obstacle allowed={0:F2} lastClear={1:F2} frozen={2} restarts={3} settling={4}",
                 Runtime.ObstacleAllowed, Runtime.LastObstacleClear, frame.Frozen, Runtime.Head.Signal.Restarts, signal.Settling);
-            Add("lodFov vanilla={0:F4} engine={1:F4} pinned={2} cover fov={3:F5} aspect={4:F5} substituted={5} replayed={6}",
-                Runtime.VanillaLodFov, Runtime.ShiftedLodFov, Runtime.LodPinActive, Runtime.LastCoverFov, Runtime.LastCoverAspect,
-                CullingPatches.Substituted, CullingPatches.Replayed);
+            Add("lodFov vanilla={0:F4} engine={1:F4} pinned={2}", Runtime.VanillaLodFov, Runtime.ShiftedLodFov, Runtime.LodPinActive);
             if (camera != null)
             {
                 Matrix4x4 p = camera.projectionMatrix;

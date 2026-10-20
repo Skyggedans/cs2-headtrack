@@ -2,62 +2,6 @@ using System;
 
 namespace HeadTrack.Core
 {
-    /// <summary>The two values the game's CPU pre-culling frustum is built from: cot(vertical half-angle) and the aspect.</summary>
-    public readonly struct PlanePacketArguments
-    {
-        public PlanePacketArguments(double fovFactor, double aspect)
-        {
-            FovFactor = fovFactor;
-            Aspect = aspect;
-        }
-
-        public double FovFactor { get; }
-
-        public double Aspect { get; }
-    }
-
-    /// <summary>
-    /// The game pre-culls on the CPU with a symmetric pyramid around the
-    /// camera axis (FrustumPlanes.BuildPlanePacket: tanV = 1/fovFactor,
-    /// tanH = aspect·tanV). An off-axis frustum pokes out of it on the
-    /// shifted side, so objects there would vanish; this widens the pyramid
-    /// to contain it.
-    /// </summary>
-    public static class CoverageFrustum
-    {
-        /// <summary>Changes of shape at which the safety margin reaches its full size.</summary>
-        private const double FullMarginChange = 0.1;
-
-        /// <summary>
-        /// Covering arguments, scaled from the game's own
-        /// (<paramref name="gameFovFactor"/>, <paramref name="gameAspect"/>)
-        /// so a zero offset gives exactly them back, and never narrower
-        /// than the off-axis frustum itself.
-        /// </summary>
-        public static PlanePacketArguments Cover(double gameFovFactor, double gameAspect, FrustumTangents rendered, FrustumTangents view)
-        {
-            double gameTanV = 1.0 / gameFovFactor;
-            double gameTanH = gameAspect * gameTanV;
-            double renderedV = Math.Max(Math.Abs(rendered.Top), Math.Abs(rendered.Bottom));
-            double renderedH = Math.Max(Math.Abs(rendered.Left), Math.Abs(rendered.Right));
-            double viewV = Math.Max(Math.Abs(view.Top), Math.Abs(view.Bottom));
-            double viewH = Math.Max(Math.Abs(view.Left), Math.Abs(view.Right));
-
-            double change = Math.Max(
-                Math.Max(Math.Abs(Shift(view.Left, view.Right) - Shift(rendered.Left, rendered.Right)),
-                         Math.Abs(Shift(view.Bottom, view.Top) - Shift(rendered.Bottom, rendered.Top))),
-                Math.Abs(Math.Log(viewV / renderedV)));
-            double k = Math.Min(1.0, change / FullMarginChange);
-
-            double tanV = Math.Max(gameTanV * viewV / renderedV, viewV) * (1 + 0.01 * k);
-            double tanH = Math.Max(gameTanH * viewH / renderedH, viewH) * (1 + 0.02 * k);
-            return new PlanePacketArguments(1.0 / tanV, tanH / tanV);
-        }
-
-        /// <summary>The normalized centre offset of an extent pair: (max + min)/(max - min).</summary>
-        private static double Shift(double min, double max) => (max + min) / (max - min);
-    }
-
     /// <summary>
     /// A physical-camera lens that renders a given frustum: gate fit None,
     /// a sensor with the frustum's aspect, the focal length for its height

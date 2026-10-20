@@ -54,7 +54,7 @@ namespace HeadTrack
             updateSystem.UpdateAfter<HeadTrackApplySystem, CameraUpdateSystem>(SystemUpdatePhase.PreCulling);
 
             s_Harmony = new Harmony(HarmonyId);
-            Patch("culling", () => { CullingPatches.Apply(s_Harmony); return true; });
+            Patch("the LOD field of view pin", () => LodPinPatch.Apply(s_Harmony));
             Patch("GTAO for the off-axis view", () => AoOffAxisPatch.Apply(s_Harmony));
             Patch("vanilla save previews", () => CapturePatch.Apply(s_Harmony));
             Patch("motion blur without the head's motion", () => HeadMotionBlurPatches.Apply(s_Harmony));
@@ -80,7 +80,6 @@ namespace HeadTrack
             UnregisterOptions();
             Runtime.Listener.Dispose();
             CameraRestorer.Restore();
-            Runtime.CoverageActive = false;
             Runtime.LodPinActive = false;
             HeadMotionBlurPatches.Remove();
             s_Harmony?.UnpatchAll(HarmonyId);

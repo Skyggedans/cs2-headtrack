@@ -115,7 +115,6 @@ namespace HeadTrack.Systems
             catch (Exception e)
             {
                 Mod.Log.Error($"HeadTrackApplySystem failed and is disabled: {e}");
-                Runtime.CoverageActive = false;
                 Runtime.LodPinActive = false;
                 CameraRestorer.Restore();
                 Enabled = false;
@@ -145,7 +144,6 @@ namespace HeadTrack.Systems
             }
             m_StatusSamples += m_Samples.Count;
 
-            Runtime.CoverageActive = false;
             Runtime.LodPinActive = false;
             double? clear = TakeObstacleResult();
 
@@ -227,9 +225,6 @@ namespace HeadTrack.Systems
                     Runtime.LodPinActive = true;
                 }
                 m_SetCachedPosition?.Invoke(m_CameraUpdate, (float3)result.View.Position.ToVector3());
-                Runtime.CoverageActive = true;
-                Runtime.CoverageRendered = rendered;
-                Runtime.CoverageView = result.View.Tangents;
                 Runtime.FramesApplied++;
                 m_StatusApplied++;
                 if (result.Clamped)

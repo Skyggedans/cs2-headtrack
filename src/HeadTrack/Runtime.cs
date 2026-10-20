@@ -56,12 +56,6 @@ namespace HeadTrack
         public static ProjectionPath Path = ProjectionPath.Explicit;
         public static bool PinLodFov = true;
 
-        /// <summary>
-        /// The covering frustum for the CPU pre-culling (debug "cover"); the
-        /// stage-5 research found 1.6.2's pre-culling never reads it, which
-        /// switching it off at a large offset can confirm.
-        /// </summary>
-        public static bool CoverEnabled = true;
 
         public static string PoseAddress = "127.0.0.1";
         public static IPAddress PoseIPAddress = IPAddress.Loopback;
@@ -82,10 +76,6 @@ namespace HeadTrack
         public static bool Dirty;
         public static CameraSnapshot Snapshot;
 
-        /// <summary>This frame's off-axis frustum for the pre-culling cover, when Apply wrote one.</summary>
-        public static bool CoverageActive;
-        public static FrustumTangents CoverageRendered;
-        public static FrustumTangents CoverageView;
 
         /// <summary>The engine's LOD field of view before Apply's writes, pinned while the camera is shifted.</summary>
         public static bool LodPinActive;
@@ -103,8 +93,6 @@ namespace HeadTrack
         public static double LastObstacleClear = double.NaN;
         public static FrustumTangents LastRendered;
         public static Vector3 LastVanillaPosition;
-        public static float LastCoverFov;
-        public static float LastCoverAspect;
         public static long FramesSeen;
         public static long FramesApplied;
         public static long FramesClamped;
@@ -219,7 +207,6 @@ namespace HeadTrack
                 case "pin_lod_fov":
                 case "follow_camera":
                 case "photo_mode":
-                case "cover":
                 case "head_blur":
                     bool flag = value == "1" || value.Equals("true", StringComparison.OrdinalIgnoreCase);
                     if (!flag && value != "0" && !value.Equals("false", StringComparison.OrdinalIgnoreCase))
@@ -237,9 +224,6 @@ namespace HeadTrack
                             break;
                         case "photo_mode":
                             PhotoMode = flag;
-                            break;
-                        case "cover":
-                            CoverEnabled = flag;
                             break;
                         case "head_blur":
                             SuppressHeadMotionBlur = !flag;

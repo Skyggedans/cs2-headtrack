@@ -2,66 +2,6 @@ using HeadTrack.Core;
 
 namespace HeadTrack.Core.Tests;
 
-public class CoverageFrustumTests
-{
-    private static readonly FrustumTangents Game = WindowProjectionTests.GameTangents;
-
-    private static double GameFovFactor => 1.0 / Game.Top;
-
-    private static double GameAspect => Game.Right / Game.Top;
-
-    [Fact]
-    public void At_zero_offset_the_games_own_arguments_come_back_unchanged()
-    {
-        PlanePacketArguments cover = CoverageFrustum.Cover(GameFovFactor, GameAspect, Game, Game);
-
-        Assert.Equal(GameFovFactor, cover.FovFactor, 12);
-        Assert.Equal(GameAspect, cover.Aspect, 12);
-    }
-
-    [Fact]
-    public void The_covering_pyramid_contains_every_ray_of_the_off_axis_frustum()
-    {
-        var rng = new Random(8);
-        for (int i = 0; i < 500; i++)
-        {
-            double shiftX = (rng.NextDouble() - 0.5) * 2.4, shiftY = (rng.NextDouble() - 0.5) * 1.8, scale = 0.6 + rng.NextDouble();
-            var view = new FrustumTangents(
-                (Game.Left + shiftX) * scale, (Game.Right + shiftX) * scale,
-                (Game.Bottom + shiftY) * scale, (Game.Top + shiftY) * scale);
-
-            PlanePacketArguments cover = CoverageFrustum.Cover(GameFovFactor, GameAspect, Game, view);
-
-            double tanV = 1.0 / cover.FovFactor, tanH = cover.Aspect * tanV;
-            for (int k = 0; k < 20; k++)
-            {
-                double x = view.Left + rng.NextDouble() * (view.Right - view.Left);
-                double y = view.Bottom + rng.NextDouble() * (view.Top - view.Bottom);
-                Assert.True(Math.Abs(x) <= tanH && Math.Abs(y) <= tanV, $"ray ({x:F3}, {y:F3}) outside ({tanH:F3}, {tanV:F3})");
-            }
-            foreach (double x in new[] { view.Left, view.Right })
-            {
-                foreach (double y in new[] { view.Bottom, view.Top })
-                {
-                    Assert.True(Math.Abs(x) <= tanH && Math.Abs(y) <= tanV, "a corner ray is outside");
-                }
-            }
-        }
-    }
-
-    [Fact]
-    public void A_game_argument_narrower_than_the_rendered_frustum_is_widened_to_cover_it()
-    {
-        double narrowFovFactor = 1.0 / (0.8 * Game.Top);
-        var view = new FrustumTangents(Game.Left + 0.1, Game.Right + 0.1, Game.Bottom, Game.Top);
-
-        PlanePacketArguments cover = CoverageFrustum.Cover(narrowFovFactor, GameAspect, Game, view);
-
-        Assert.True(1.0 / cover.FovFactor >= Game.Top);
-        Assert.True(cover.Aspect / cover.FovFactor >= view.Right);
-    }
-}
-
 public class PhysicalLensTests
 {
     [Fact]
