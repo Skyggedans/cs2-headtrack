@@ -481,4 +481,48 @@ public class HeadCoupledCameraTests
 
         Assert.True(Shown(after) < 1.0, $"after the gap the view showed {Shown(after):F1} mm of before");
     }
+
+    [Fact]
+    public void A_mode_switched_in_the_main_menu_shows_nothing_of_the_last_city()
+    {
+        // City A in window mode, leaning; in the menu the player picks the
+        // centred mode; city B with the head at rest, where centred shows
+        // the game's own view.
+        var settings = new HeadTrackSettings();
+        settings.Mapper.Mode = EyeMode.Window;
+        settings.Mapper.Gain = 3;
+        var head = new HeadCoupledCamera(settings);
+        var rest = new Vec3(0, 0, 600);
+        head.RequestCentre(0);
+        Run(head, 0, 2.0, t => rest);
+        Run(head, 2.0, 4.0, t => rest + new Vec3(150, 0, 0));
+        settings.Mapper.Mode = EyeMode.Centred;
+        head.RequestCentre(6.5);
+        for (double t = Math.Ceiling(6.5 / Period) * Period; t < 7.0; t += Period)
+        {
+            head.AddEye(t, rest);
+        }
+        var cityB = new List<FrameResult> { head.Compute(7.0, GameCamera(), 1120, gateOpen: true, cut: true) };
+
+        Run(head, 7.0, 8.0, t => rest, frames: cityB);
+
+        Assert.True(Shown(cityB) < 1.0, $"city B showed a {Shown(cityB):F1} mm offset from city A");
+    }
+
+    [Fact]
+    public void A_hold_through_a_camera_change_holds_the_new_cameras_view()
+    {
+        // The hold key is down while the camera changes (a follow camera
+        // starts): the old camera's frozen offset means nothing there.
+        var rest = new Vec3(0, 0, 600);
+        HeadCoupledCamera head = Centred(rest);
+        Run(head, 2.0, 3.0, t => rest + new Vec3(150, 0, 0));
+        Run(head, 3.0, 4.0, t => rest + new Vec3(150, 0, 0), freeze: _ => true);
+        Run(head, 4.0, 5.0, t => rest, freeze: _ => true);
+        var after = new List<FrameResult> { head.Compute(5.0, GameCamera(), 1120, gateOpen: true, cut: true, freeze: true) };
+
+        Run(head, 5.0, 6.0, t => rest, freeze: _ => true, frames: after);
+
+        Assert.True(Shown(after) < 1.0, $"the new camera held {Shown(after):F1} mm of the old one's offset");
+    }
 }

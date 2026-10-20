@@ -278,7 +278,16 @@ namespace HeadTrack.Core
                 // the neutral eye to the rest pose: glide across, as after a switch.
                 Release(now, Settings.GlideSeconds);
             }
-            Vec3 offset = Hold(now, mapped - neutral, freeze) * weight;
+            Vec3 live = mapped - neutral;
+            if (cut || paused)
+            {
+                // Nothing from before the cut glides in or stays held either:
+                // a switch's glide is covered by the ramp from zero, and a
+                // hold in force holds the head as it is now.
+                m_Releasing = false;
+                m_LastOffset = live;
+            }
+            Vec3 offset = Hold(now, live, freeze) * weight;
 
             if (!signal.HasEye || weight <= 0 || !IsFinite(offset) || offset.Length < Settings.MinOffsetMm)
             {
