@@ -57,6 +57,7 @@ namespace HeadTrack.Systems
         private bool m_HasObstacleUpdate;
         private double m_LastObstacleUpdate;
         private bool m_DragOverWorld;
+        private bool m_Skipped;
         private double m_LastDepth = 100;
         private TerrainHeightData m_Height;
         private WaterSurfacesData m_Surfaces;
@@ -161,8 +162,13 @@ namespace HeadTrack.Systems
             m_Keys.Update(now, inGame);
             if (!inGame || m_CameraUpdate.activeViewer == null || camera == null)
             {
+                // The core never sees these frames (loading, a menu, no
+                // camera): the first one it sees again starts afresh.
+                m_Skipped = true;
                 return;
             }
+            cut |= m_Skipped;
+            m_Skipped = false;
 
             CameraController gameplay = m_CameraUpdate.gamePlayController;
             // A building tool (anything but the default selection tool) may lower the gain or stop the effect.

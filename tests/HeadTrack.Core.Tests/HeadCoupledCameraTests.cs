@@ -299,4 +299,45 @@ public class HeadCoupledCameraTests
 
         Assert.True((refrozen.Eye - gliding.Eye).Length < 1e-9, $"moved {(refrozen.Eye - gliding.Eye).Length:F3} mm");
     }
+
+    [Fact]
+    public void A_long_frame_in_the_city_leaves_the_view_where_it_was()
+    {
+        // A save or a streaming stall holds one frame for 0.3 s; the camera,
+        // the city and the head are as they were.
+        var rest = new Vec3(0, 0, 600);
+        HeadCoupledCamera head = Centred(rest);
+        Vec3 lean = rest + new Vec3(25, 0, 0);
+        FrameResult before = Run(head, 2.0, 4.0, t => lean);
+        double last = 0;
+        for (double t = Math.Ceiling(4.0 / Period) * Period; t <= 4.3; t += Period)
+        {
+            head.AddEye(t, lean);
+            last = t;
+        }
+        head.MarkAlive(last);
+
+        FrameResult after = head.Compute(4.3, GameCamera(), 1120, gateOpen: true, cut: false);
+
+        Assert.True(before.Apply);
+        Assert.True(after.Apply);
+        Assert.Equal(before.Weight, after.Weight, 9);
+        Assert.True((after.View.Position - before.View.Position).Length < 1e-3,
+            $"the camera moved {(after.View.Position - before.View.Position).Length:F3} m");
+    }
+
+    [Fact]
+    public void Frames_that_stop_for_longer_than_the_gap_start_afresh()
+    {
+        var rest = new Vec3(0, 0, 600);
+        HeadCoupledCamera head = Centred(rest);
+        Run(head, 2.0, 4.0, t => rest + new Vec3(25, 0, 0));
+        double resume = 4.0 + head.Settings.GapSeconds + 1;
+
+        FrameResult first = Run(head, resume, resume + 0.01, t => rest + new Vec3(25, 0, 0));
+        FrameResult later = Run(head, resume + 0.01, resume + 1.0, t => rest + new Vec3(25, 0, 0));
+
+        Assert.Equal(0.0, first.Weight, 9);
+        Assert.Equal(1.0, later.Weight, 9);
+    }
 }

@@ -16,8 +16,13 @@ namespace HeadTrack.Core
         /// <summary>How long the effect takes to come in or go out when a gate opens or closes (s).</summary>
         public double RampSeconds { get; set; } = 0.4;
 
-        /// <summary>A pause between frames longer than this (s: loading, a menu) counts as a cut, so the effect ramps in again.</summary>
-        public double GapSeconds { get; set; } = 0.25;
+        /// <summary>
+        /// A pause between frames longer than this (s) counts as a cut, so the
+        /// effect ramps in again: a safety net for gaps nobody reported. The
+        /// mod passes a cut itself after frames it skipped (loading, a menu),
+        /// so a long frame in the city (a save, a stall) keeps the view.
+        /// </summary>
+        public double GapSeconds { get; set; } = 5.0;
 
         /// <summary>An eye offset below this (mm) writes nothing, so the game stays bit-exact.</summary>
         public double MinOffsetMm { get; set; } = 1e-3;
