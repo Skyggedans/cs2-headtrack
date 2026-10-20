@@ -142,6 +142,8 @@ namespace HeadTrack.Core
         private bool m_RestartPending;
         private bool m_Dipping;
         private Vec3 m_DipHold;
+        private double m_LateralViewGain = 1;
+        private double m_DepthViewGain = 1;
 
         public HeadSignal(SignalSettings settings)
         {
@@ -151,6 +153,20 @@ namespace HeadTrack.Core
 
         /// <summary>Re-acquisitions so far: a sample after a loss, or a jump from a held pose.</summary>
         public long Restarts { get; private set; }
+
+        /// <summary>
+        /// How much the view amplifies the head sideways and in depth (the
+        /// magnitudes of the gains). The filter measures speed in what the
+        /// user sees, so its speed coefficient β is scaled by these: the view
+        /// at gain g then follows a head track exactly as it follows g times
+        /// that track at gain 1, and a peek keeps its latency at any gain.
+        /// The cutoff at rest and the derivative cutoff stay as set.
+        /// </summary>
+        public void SetViewGain(double lateral, double depth)
+        {
+            m_LateralViewGain = IsFinite(lateral) ? Math.Abs(lateral) : 1;
+            m_DepthViewGain = IsFinite(depth) ? Math.Abs(depth) : 1;
+        }
 
         /// <summary>
         /// Notes that the source sent a packet at <paramref name="time"/> that
@@ -169,7 +185,7 @@ namespace HeadTrack.Core
             double sinceFilter = time - m_LastFilterTime;
             if (sinceFilter >= EstimatePeriod())
             {
-                AddToHistory(time, m_Filter.Filter(m_LastRaw, sinceFilter));
+                AddToHistory(time, Filter(m_LastRaw, sinceFilter));
                 m_LastFilterTime = time;
             }
         }
@@ -209,7 +225,7 @@ namespace HeadTrack.Core
                     dt = Math.Max(m_Settings.MinPeriod, time - m_LastFilterTime);
                 }
             }
-            AddToHistory(time, m_Filter.Filter(eye, dt));
+            AddToHistory(time, Filter(eye, dt));
             m_HasSample = true;
             m_LastSample = time;
             m_LastFilterTime = time;
@@ -313,6 +329,19 @@ namespace HeadTrack.Core
             m_RestartPending = false;
             m_Dipping = false;
         }
+
+        /// <summary>One sample through the 1€ filter with the settings as they are now.</summary>
+        private Vec3 Filter(Vec3 eye, double dt)
+        {
+            m_Filter.Lateral = Scaled(m_Settings.Lateral, m_LateralViewGain);
+            m_Filter.Depth = Scaled(m_Settings.Depth, m_DepthViewGain);
+            return m_Filter.Filter(eye, dt);
+        }
+
+        private static OneEuroParameters Scaled(OneEuroParameters parameters, double viewGain) =>
+            new OneEuroParameters(parameters.MinCutoff, parameters.Beta * viewGain, parameters.DCutoff);
+
+        private static bool IsFinite(double value) => !double.IsNaN(value) && !double.IsInfinity(value);
 
         private void AddToHistory(double time, Vec3 filtered)
         {

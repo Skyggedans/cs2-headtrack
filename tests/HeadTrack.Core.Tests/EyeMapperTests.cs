@@ -33,8 +33,9 @@ public class EyeMapperTests
     {
         var mapper = new EyeMapper(new MapperSettings { MaxShiftX = 100, MaxDepthRatio = 100 });
 
-        Vec3 rest = mapper.Map(0.0, Signal(new Vec3(0, 0, 600)), Z0, Neutral);
-        Vec3 moved = mapper.Map(0.0, Signal(new Vec3(40, 0, 600)), Z0, Neutral);
+        // OpenTrack's own numbers: zero at its centre.
+        Vec3 rest = mapper.Map(0.0, Signal(new Vec3(0, 0, 0)), Z0, Neutral);
+        Vec3 moved = mapper.Map(0.0, Signal(new Vec3(40, 0, 0)), Z0, Neutral);
 
         Assert.Equal(0.0, rest.X, 9);
         Assert.Equal(Z0, rest.Z, 9);
@@ -76,15 +77,20 @@ public class EyeMapperTests
     }
 
     [Fact]
-    public void Inverted_axes_flip_their_offsets()
+    public void Inverted_axes_mirror_the_motion_around_the_centre()
     {
-        var mapper = new EyeMapper(new MapperSettings { Source = PoseSource.Relative, RelativeDistanceMm = 600, InvertX = true, InvertY = true, InvertZ = true });
+        var settings = Unsaturated();
+        settings.InvertX = true;
+        settings.InvertY = true;
+        settings.InvertZ = true;
+        var mapper = new EyeMapper(settings);
 
-        Vec3 eye = mapper.SourceEye(new OpenTrackPose(-1.0, 2.0, -3.0, 0, 0, 0));
+        // OpenTrack's numbers: 10 mm right, 20 mm up, 30 mm nearer than its centre.
+        Vec3 eye = mapper.Map(0.0, Signal(new Vec3(10, 20, -30)), Z0, Neutral);
 
         Assert.Equal(-10.0, eye.X, 9);
         Assert.Equal(-20.0, eye.Y, 9);
-        Assert.Equal(630.0, eye.Z, 9);
+        Assert.Equal(Z0 * 600.0 / 570.0, eye.Z, 9);
     }
 
     [Fact]
@@ -117,7 +123,9 @@ public class EyeMapperTests
     public void Centred_depth_is_proportional_so_leaning_keeps_the_far_field_size()
     {
         var rest = new Vec3(0, 0, 600);
-        var (mapper, now) = Centred(Unsaturated(), rest);
+        var settings = Unsaturated();
+        settings.Source = PoseSource.Absolute;
+        var (mapper, now) = Centred(settings, rest);
 
         Vec3 eye = mapper.Map(now, Signal(new Vec3(0, 0, 660)), Z0, Neutral);
 

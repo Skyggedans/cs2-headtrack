@@ -157,15 +157,17 @@ namespace HeadTrack.Core
         /// <summary>A longer gap between updates counts as this long (s).</summary>
         private const double MaxFrameSeconds = 0.1;
 
-        private readonly double m_Seconds;
         private double m_Progress;
         private double m_Last;
         private bool m_HasLast;
 
         public EffectRamp(double seconds)
         {
-            m_Seconds = seconds;
+            Seconds = seconds;
         }
+
+        /// <summary>How long a full ramp takes (s); 0 switches at once. A new value applies from the next update.</summary>
+        public double Seconds { get; set; }
 
         public double Weight => Smoothstep(m_Progress);
 
@@ -174,7 +176,7 @@ namespace HeadTrack.Core
             double dt = m_HasLast ? Math.Min(MaxFrameSeconds, Math.Max(0, now - m_Last)) : 0;
             m_HasLast = true;
             m_Last = now;
-            double step = m_Seconds > 0 ? dt / m_Seconds : 1;
+            double step = Seconds > 0 ? dt / Seconds : 1;
             m_Progress = on ? Math.Min(1, m_Progress + step) : Math.Max(0, m_Progress - step);
             return Weight;
         }

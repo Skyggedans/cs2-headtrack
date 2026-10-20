@@ -152,14 +152,19 @@ namespace HeadTrack.Core
     public sealed class HeadCoupledCamera
     {
         private readonly EffectRamp m_Ramp;
+        private readonly ViewParameterGlide m_View = new ViewParameterGlide();
         private bool m_HasFrame;
         private double m_LastFrame;
         private double m_LastDepth = double.NaN;
         private bool m_Frozen;
         private bool m_Releasing;
         private double m_ReleaseStart;
+        private double m_ReleaseSeconds;
         private Vec3 m_ReleaseFrom;
         private Vec3 m_LastOffset;
+        private bool m_HasSwitches;
+        private EyeMode m_LastMode;
+        private PoseSource m_LastSource;
 
         public HeadCoupledCamera(HeadTrackSettings settings)
         {
@@ -167,6 +172,8 @@ namespace HeadTrack.Core
             Signal = new HeadSignal(settings.Signal);
             Mapper = new EyeMapper(settings.Mapper);
             m_Ramp = new EffectRamp(settings.RampSeconds);
+            ViewParameters view = ViewParameters.From(settings);
+            Signal.SetViewGain(view.LateralViewGain, view.Gain.Z);
         }
 
         public HeadTrackSettings Settings { get; }
@@ -176,9 +183,12 @@ namespace HeadTrack.Core
         public EyeMapper Mapper { get; }
 
         /// <summary>
-        /// Feeds an eye position (mm) that arrived at <paramref name="time"/>
-        /// (s); <paramref name="previousArrival"/> is when the packet before it
-        /// arrived, a repeat or not (NaN if unknown).
+        /// Feeds the tracker's numbers (mm, <see cref="OpenTrackPose.EyeMillimetres"/>:
+        /// the display-frame eye for an absolute source, the offset from
+        /// OpenTrack's centre for a relative one) that arrived at
+        /// <paramref name="time"/> (s); <paramref name="previousArrival"/> is
+        /// when the packet before it arrived, a repeat or not (NaN if unknown).
+        /// What they mean is applied per frame by the <see cref="Mapper"/>.
         /// </summary>
         public void AddEye(double time, Vec3 eyeMm, double previousArrival = double.NaN)
         {
@@ -194,7 +204,7 @@ namespace HeadTrack.Core
         /// <summary>Feeds a packet's pose that arrived at <paramref name="time"/> (s); see <see cref="AddEye"/>.</summary>
         public void AddPose(double time, OpenTrackPose pose, double previousArrival = double.NaN)
         {
-            AddEye(time, Mapper.SourceEye(pose), previousArrival);
+            AddEye(time, pose.EyeMillimetres, previousArrival);
         }
 
         public void RequestCentre(double now)
@@ -211,11 +221,13 @@ namespace HeadTrack.Core
         /// may move the wanted position (terrain, water, buildings); the
         /// frustum is built from wherever the camera ends up.
         /// <paramref name="freeze"/> holds the eye where it is (a tool is being
-        /// dragged, so the world must stay put under the cursor); when it ends,
-        /// the eye glides back to the head.
+        /// dragged, so the world must stay put under the cursor, or the hold key
+        /// is down); when it ends, the eye glides back to the head.
+        /// <paramref name="maxGain"/> caps every gain (a construction tool is
+        /// active); a new cap glides in like a changed setting.
         /// </summary>
         public FrameResult Compute(double now, CameraFrame camera, double depth, bool gateOpen, bool cut, Func<Vec3, Vec3>? clamp = null,
-            bool freeze = false)
+            bool freeze = false, double maxGain = double.PositiveInfinity)
         {
             if (!IsFinite(now))
             {
@@ -225,8 +237,13 @@ namespace HeadTrack.Core
             m_HasFrame = true;
             m_LastFrame = now;
 
+            Switches(now);
+            m_Ramp.Seconds = Settings.RampSeconds;
             HeadSignalOutput signal = Signal.Update(now);
             double weight = cut || paused ? m_Ramp.Cut(now) : m_Ramp.Update(now, gateOpen);
+            // While nothing shows, a new setting may apply at once.
+            ViewParameters parameters = m_View.Follow(now, ViewParameters.From(Settings).Capped(maxGain), Settings.GlideSeconds, snap: weight <= 0);
+            Signal.SetViewGain(parameters.LateralViewGain, parameters.Gain.Z);
             if (IsFinite(depth) && depth > 0)
             {
                 m_LastDepth = depth;
@@ -236,10 +253,10 @@ namespace HeadTrack.Core
             {
                 return default;
             }
-            WindowGeometry window = WindowProjection.Window(camera, Settings.WindowDepthFraction * windowDepth,
-                Settings.Mapper.ScreenWidthMm, Settings.Mapper.ScreenHeightMm);
+            WindowGeometry window = WindowProjection.Window(camera, parameters.WindowDepthFraction * windowDepth,
+                parameters.ScreenWidthMm, parameters.ScreenHeightMm);
             Vec3 neutral = window.NeutralEye;
-            Vec3 mapped = Mapper.Map(now, signal, window.Z0, neutral);
+            Vec3 mapped = Mapper.Map(now, signal, window.Z0, neutral, parameters);
             Vec3 offset = Hold(now, mapped - neutral, freeze) * weight;
 
             if (!signal.HasEye || weight <= 0 || !IsFinite(offset) || offset.Length < Settings.MinOffsetMm)
@@ -265,7 +282,51 @@ namespace HeadTrack.Core
             return Skip(window, neutral, camera.Position, weight, windowDepth, signal);
         }
 
-        /// <summary>The eye offset (mm) to use: held while frozen, gliding from there to the live one once the freeze ends.</summary>
+        /// <summary>
+        /// A switch of mode or source changes what the head means at once; the
+        /// view does not: it glides from where it was, as after a freeze. A new
+        /// source also drops the old centre. An absolute source without a
+        /// centre takes one by itself.
+        /// </summary>
+        private void Switches(double now)
+        {
+            EyeMode mode = Settings.Mapper.Mode;
+            PoseSource source = Settings.Mapper.Source;
+            if (m_HasSwitches && (mode != m_LastMode || source != m_LastSource))
+            {
+                Release(now, Settings.GlideSeconds);
+                if (source != m_LastSource)
+                {
+                    Mapper.ForgetCentre();
+                }
+            }
+            m_HasSwitches = true;
+            m_LastMode = mode;
+            m_LastSource = source;
+            if (source == PoseSource.Absolute && !Mapper.HasReference && !Mapper.IsCapturing)
+            {
+                Mapper.RequestCentre(now);
+            }
+        }
+
+        /// <summary>Glides the view from where it is to the live eye over <paramref name="seconds"/>; a freeze in force keeps it until its own release.</summary>
+        private void Release(double now, double seconds)
+        {
+            if (m_Frozen)
+            {
+                return;
+            }
+            m_Releasing = true;
+            m_ReleaseStart = now;
+            m_ReleaseSeconds = seconds;
+            m_ReleaseFrom = m_LastOffset;
+        }
+
+        /// <summary>
+        /// The eye offset (mm) to use: held while frozen (a tool drag, the hold
+        /// key), gliding from there to the live one once the freeze ends — or
+        /// once a switch of mode or source has changed the live one.
+        /// </summary>
         private Vec3 Hold(double now, Vec3 live, bool freeze)
         {
             if (freeze)
@@ -277,14 +338,12 @@ namespace HeadTrack.Core
             if (m_Frozen)
             {
                 m_Frozen = false;
-                m_Releasing = true;
-                m_ReleaseStart = now;
-                m_ReleaseFrom = m_LastOffset;
+                Release(now, Settings.FreezeReleaseSeconds);
             }
             Vec3 offset = live;
             if (m_Releasing)
             {
-                double progress = Settings.FreezeReleaseSeconds > 0 ? (now - m_ReleaseStart) / Settings.FreezeReleaseSeconds : 1;
+                double progress = m_ReleaseSeconds > 0 ? (now - m_ReleaseStart) / m_ReleaseSeconds : 1;
                 if (progress >= 1)
                 {
                     m_Releasing = false;

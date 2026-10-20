@@ -32,16 +32,20 @@ namespace HeadTrack.Core
     {
         private const double MinDt = 1e-4;
 
-        private readonly OneEuroParameters m_Lateral;
-        private readonly OneEuroParameters m_Depth;
         private Vec3 m_Value;
         private Vec3 m_Velocity;
 
         public EyeFilter(OneEuroParameters lateral, OneEuroParameters depth)
         {
-            m_Lateral = lateral;
-            m_Depth = depth;
+            Lateral = lateral;
+            Depth = depth;
         }
+
+        /// <summary>The parameters for x and y; a new value applies from the next sample, the state carries on.</summary>
+        public OneEuroParameters Lateral { get; set; }
+
+        /// <summary>The parameters for z; a new value applies from the next sample.</summary>
+        public OneEuroParameters Depth { get; set; }
 
         public bool HasValue { get; private set; }
 
@@ -59,15 +63,15 @@ namespace HeadTrack.Core
             }
             dt = Math.Max(dt, MinDt);
             Vec3 raw = (x - m_Value) / dt;
-            double aLateral = Alpha(m_Lateral.DCutoff, dt);
-            double aDepth = Alpha(m_Depth.DCutoff, dt);
+            double aLateral = Alpha(Lateral.DCutoff, dt);
+            double aDepth = Alpha(Depth.DCutoff, dt);
             m_Velocity = new Vec3(
                 m_Velocity.X + aLateral * (raw.X - m_Velocity.X),
                 m_Velocity.Y + aLateral * (raw.Y - m_Velocity.Y),
                 m_Velocity.Z + aDepth * (raw.Z - m_Velocity.Z));
             double lateralSpeed = Math.Sqrt(m_Velocity.X * m_Velocity.X + m_Velocity.Y * m_Velocity.Y);
-            double a = Alpha(m_Lateral.MinCutoff + m_Lateral.Beta * lateralSpeed, dt);
-            double az = Alpha(m_Depth.MinCutoff + m_Depth.Beta * Math.Abs(m_Velocity.Z), dt);
+            double a = Alpha(Lateral.MinCutoff + Lateral.Beta * lateralSpeed, dt);
+            double az = Alpha(Depth.MinCutoff + Depth.Beta * Math.Abs(m_Velocity.Z), dt);
             m_Value = new Vec3(
                 m_Value.X + a * (x.X - m_Value.X),
                 m_Value.Y + a * (x.Y - m_Value.Y),

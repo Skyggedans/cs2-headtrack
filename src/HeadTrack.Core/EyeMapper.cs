@@ -60,16 +60,19 @@ namespace HeadTrack.Core
         /// <summary>The largest vertical eye offset, as a fraction of the screen height.</summary>
         public double MaxShiftY { get; set; } = 0.45;
 
-        /// <summary>The nearest the virtual eye may come, as a fraction of the neutral distance.</summary>
+        /// <summary>The nearest the virtual eye may come, as a fraction of the rest distance (the neutral eye's when centred, the rest pose's in window mode).</summary>
         public double MinDepthRatio { get; set; } = 0.625;
 
-        /// <summary>The farthest the virtual eye may go, as a multiple of the neutral distance.</summary>
+        /// <summary>The farthest the virtual eye may go, as a multiple of the rest distance.</summary>
         public double MaxDepthRatio { get; set; } = 1.6;
 
+        /// <summary>Mirror sideways motion around the rest pose (a negative gain).</summary>
         public bool InvertX { get; set; }
 
+        /// <summary>Mirror vertical motion around the rest pose.</summary>
         public bool InvertY { get; set; }
 
+        /// <summary>Mirror motion towards and away from the screen around the rest pose.</summary>
         public bool InvertZ { get; set; }
 
         /// <summary>How long centring averages the head pose (s).</summary>
@@ -80,14 +83,21 @@ namespace HeadTrack.Core
     }
 
     /// <summary>
-    /// Turns the filtered tracker eye (mm, display frame) into the virtual
-    /// eye that drives the window geometry, in the same frame: +x right, +y up,
-    /// +z towards the user, origin at the screen centre.
+    /// Turns the filtered tracker numbers into the virtual eye that drives the
+    /// window geometry (mm, display frame: +x right, +y up, +z towards the
+    /// user, origin at the screen centre). The filter works on the tracker's
+    /// own numbers; what they mean (the source, the viewing distance) and how
+    /// they are scaled (gains, inversions) is applied here, per frame, so any
+    /// of it can change while the camera runs: the centre is kept in tracker
+    /// numbers too and means the same after the change.
     /// </summary>
     public sealed class EyeMapper
     {
         /// <summary>Below this presence a frame does not count towards a centre.</summary>
         private const double CapturePresence = 0.99;
+
+        /// <summary>Distances below this (mm) count as this, so a lean through the screen never takes the log of zero.</summary>
+        private const double MinDistanceMm = 1.0;
 
         private readonly MapperSettings m_Settings;
         private bool m_Capturing;
@@ -107,21 +117,13 @@ namespace HeadTrack.Core
 
         public MapperSettings Settings => m_Settings;
 
-        /// <summary>True once a centre (rest pose) exists; a relative source has one from the start.</summary>
+        /// <summary>True once a centre (rest pose) exists; a relative source has one from the start: OpenTrack's own.</summary>
         public bool HasReference => m_HasReference || m_Settings.Source == PoseSource.Relative;
 
         public bool IsCapturing => m_Capturing;
 
-        /// <summary>The eye (mm) a packet stands for, before any centring.</summary>
-        public Vec3 SourceEye(OpenTrackPose pose)
-        {
-            double x = m_Settings.InvertX ? -pose.X : pose.X;
-            double y = m_Settings.InvertY ? -pose.Y : pose.Y;
-            double z = m_Settings.InvertZ ? -pose.Z : pose.Z;
-            return m_Settings.Source == PoseSource.Absolute
-                ? new Vec3(-10.0 * x, 10.0 * y, 10.0 * z)
-                : new Vec3(-10.0 * x, 10.0 * y, m_Settings.RelativeDistanceMm + 10.0 * z);
-        }
+        /// <summary>The eye (mm) a packet stands for under the current source and viewing distance, before any centring.</summary>
+        public Vec3 SourceEye(OpenTrackPose pose) => Interpret(pose.EyeMillimetres, m_Settings.RelativeDistanceMm);
 
         /// <summary>Starts averaging the head pose; when done, the view glides to the new centre.</summary>
         public void RequestCentre(double now)
@@ -133,67 +135,89 @@ namespace HeadTrack.Core
         }
 
         /// <summary>
-        /// The virtual eye for a frame. <paramref name="z0"/> is the distance
-        /// at which the game's own field of view fits the screen, and
-        /// <paramref name="neutralEye"/> the eye that reproduces the game's
-        /// camera exactly (both from the window geometry).
+        /// Drops the captured centre and any capture or glide in progress: the
+        /// numbers of a new source mean something else. A relative source
+        /// falls back on OpenTrack's centre; an absolute one needs a new capture.
         /// </summary>
-        public Vec3 Map(double now, HeadSignalOutput signal, double z0, Vec3 neutralEye)
+        public void ForgetCentre()
+        {
+            m_HasReference = false;
+            m_Capturing = false;
+            m_Blending = false;
+        }
+
+        /// <summary>
+        /// The virtual eye for a frame with the parameters the settings give
+        /// now. <paramref name="z0"/> is the distance at which the game's own
+        /// field of view fits the screen, and <paramref name="neutralEye"/> the
+        /// eye that reproduces the game's camera exactly.
+        /// </summary>
+        public Vec3 Map(double now, HeadSignalOutput signal, double z0, Vec3 neutralEye) =>
+            Map(now, signal, z0, neutralEye, ViewParameters.From(m_Settings));
+
+        /// <summary>The virtual eye for a frame with <paramref name="view"/>: the parameters as they glide.</summary>
+        public Vec3 Map(double now, HeadSignalOutput signal, double z0, Vec3 neutralEye, in ViewParameters view)
         {
             if (!signal.HasEye)
             {
                 return neutralEye;
             }
-            Vec3 eye = signal.Eye;
-            Capture(now, eye, signal.Presence, signal.Settling);
-            Vec3 reference = CurrentReference(now);
+            Capture(now, signal.Eye, signal.Presence, signal.Settling);
+            double distance = view.ViewingDistanceMm;
+            Vec3 eye = Interpret(signal.Eye, distance);
+            Vec3 reference = Interpret(CurrentReference(now), distance);
+            Vec3 gain = view.Gain;
 
             Vec3 mapped;
             Vec3 rest;
             if (m_Settings.Mode == EyeMode.Centred)
             {
                 rest = neutralEye;
-                if (!HasReference)
-                {
-                    mapped = neutralEye;
-                }
-                else
-                {
-                    double g = m_Settings.Gain;
-                    double zn = reference.Z > 1.0 ? reference.Z : m_Settings.RelativeDistanceMm;
-                    mapped = new Vec3(
-                        neutralEye.X + g * (eye.X - reference.X),
-                        neutralEye.Y + g * (eye.Y - reference.Y),
-                        z0 * (1.0 + m_Settings.DepthGain * (eye.Z - zn) / zn));
-                }
+                mapped = !HasReference
+                    ? neutralEye
+                    : new Vec3(
+                        neutralEye.X + gain.X * (eye.X - reference.X),
+                        neutralEye.Y + gain.Y * (eye.Y - reference.Y),
+                        z0 * DepthRatio(eye.Z, reference.Z, gain.Z));
+            }
+            else if (HasReference)
+            {
+                rest = reference;
+                mapped = new Vec3(
+                    reference.X + gain.X * (eye.X - reference.X),
+                    reference.Y + gain.Y * (eye.Y - reference.Y),
+                    reference.Z * DepthRatio(eye.Z, reference.Z, gain.Z));
             }
             else
             {
-                if (HasReference)
-                {
-                    rest = reference;
-                    mapped = new Vec3(
-                        reference.X + m_Settings.Gain * (eye.X - reference.X),
-                        reference.Y + m_Settings.Gain * (eye.Y - reference.Y),
-                        reference.Z + m_Settings.DepthGain * (eye.Z - reference.Z));
-                }
-                else
-                {
-                    rest = neutralEye;
-                    mapped = eye;
-                }
+                rest = neutralEye;
+                mapped = eye;
             }
 
             Vec3 blended = rest + (mapped - rest) * Clamp01(signal.Presence);
-            return Limit(blended, z0, neutralEye);
+            return Limit(blended, rest, view);
         }
+
+        /// <summary>The tracker's numbers (mm) as an eye: a relative pose is an offset from the viewing distance.</summary>
+        private Vec3 Interpret(Vec3 raw, double distance) =>
+            m_Settings.Source == PoseSource.Relative ? new Vec3(raw.X, raw.Y, raw.Z + distance) : raw;
+
+        /// <summary>
+        /// (z / zn)^gain: the depth gain scales the log of the distance ratio,
+        /// so at gain 1 the eye's distance is in proportion to the head's, and
+        /// at any gain a deep lean approaches the screen without reaching or
+        /// crossing it.
+        /// </summary>
+        private static double DepthRatio(double z, double zn, double gain) =>
+            Math.Exp(gain * Math.Log(Math.Max(z, MinDistanceMm) / Math.Max(zn, MinDistanceMm)));
 
         /// <summary>
         /// Averages the head over <see cref="MapperSettings.CentreCaptureSeconds"/>
         /// of frames in which it is steadily there (full presence, not
         /// settling); a frame that is not starts the average over. The
         /// reference then glides to the new centre — the first one from the
-        /// eye itself, so the view starts from neutral either way.
+        /// eye itself, so the view starts from neutral either way. Everything
+        /// here is in tracker numbers.
         /// </summary>
         private void Capture(double now, Vec3 eye, double presence, bool settling)
         {
@@ -226,39 +250,41 @@ namespace HeadTrack.Core
             m_HasReference = true;
         }
 
+        /// <summary>The centre in tracker numbers; a relative source without a capture is centred where OpenTrack is (zero).</summary>
         private Vec3 CurrentReference(double now)
         {
-            Vec3 target = m_HasReference ? m_Reference : new Vec3(0, 0, m_Settings.RelativeDistanceMm);
+            Vec3 target = m_HasReference ? m_Reference : Vec3.Zero;
             if (!m_Blending)
             {
                 return target;
             }
-            double progress = (now - m_BlendStart) / m_Settings.CentreBlendSeconds;
+            double seconds = m_Settings.CentreBlendSeconds;
+            double progress = seconds > 0 ? (now - m_BlendStart) / seconds : 1;
             if (progress >= 1)
             {
                 m_Blending = false;
                 return target;
             }
-            double s = progress <= 0 ? 0 : progress * progress * (3 - 2 * progress);
-            return m_BlendFrom + (target - m_BlendFrom) * s;
+            return m_BlendFrom + (target - m_BlendFrom) * Ease.Smoothstep(progress);
         }
 
         /// <summary>
-        /// Keeps the eye inside the limits: identity for moderate offsets,
-        /// then a smooth approach to the limit, so the view never stops dead.
+        /// Keeps the eye inside the limits, measured from the rest pose:
+        /// identity for moderate offsets, then a smooth approach to the limit,
+        /// so the view never stops dead — and a true window at unit gain shows
+        /// the rest pose exactly, wherever the user sits.
         /// </summary>
-        private Vec3 Limit(Vec3 eye, double z0, Vec3 neutralEye)
+        private static Vec3 Limit(Vec3 eye, Vec3 rest, in ViewParameters view)
         {
-            double width = m_Settings.ScreenWidthMm;
-            double height = m_Settings.ScreenHeightMm;
-            double sx = SoftLimit((eye.X - neutralEye.X) / width, m_Settings.MaxShiftX);
-            double sy = SoftLimit((eye.Y - neutralEye.Y) / height, m_Settings.MaxShiftY);
-            double ratio = eye.Z / z0;
-            double logRatio = ratio > 0 ? Math.Log(ratio) : Math.Log(m_Settings.MinDepthRatio);
+            double width = view.ScreenWidthMm;
+            double height = view.ScreenHeightMm;
+            double sx = SoftLimit((eye.X - rest.X) / width, view.MaxShiftX);
+            double sy = SoftLimit((eye.Y - rest.Y) / height, view.MaxShiftY);
+            double logRatio = Math.Log(Math.Max(eye.Z, MinDistanceMm) / Math.Max(rest.Z, MinDistanceMm));
             double limitedLog = logRatio >= 0
-                ? SoftLimit(logRatio, Math.Log(m_Settings.MaxDepthRatio))
-                : -SoftLimit(-logRatio, -Math.Log(m_Settings.MinDepthRatio));
-            return new Vec3(neutralEye.X + sx * width, neutralEye.Y + sy * height, z0 * Math.Exp(limitedLog));
+                ? SoftLimit(logRatio, Math.Log(view.MaxDepthRatio))
+                : -SoftLimit(-logRatio, -Math.Log(view.MinDepthRatio));
+            return new Vec3(rest.X + sx * width, rest.Y + sy * height, rest.Z * Math.Exp(limitedLog));
         }
 
         /// <summary>Identity up to half the limit, then a C1 tanh knee approaching the limit.</summary>
