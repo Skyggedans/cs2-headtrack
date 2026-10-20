@@ -180,6 +180,33 @@ public class WindowProjectionTests
     }
 
     [Fact]
+    public void An_extreme_but_finite_frustum_is_still_built()
+    {
+        // A camera lifted 120 m above a window 15 m deep: tangents around -5.
+        CameraFrame camera = Camera(-70, 5, Symmetric(60));
+        WindowGeometry window = WindowProjection.Window(camera, 15, Ws, Hs);
+        Vec3 lifted = camera.Position + new Vec3(0, 120, 0);
+
+        OffAxisView view = WindowProjection.ViewFrom(camera, window, lifted);
+
+        Assert.True(view.Valid);
+        Assert.True(view.Bottom / view.Near < -4.0);
+    }
+
+    [Fact]
+    public void An_absurd_frustum_beyond_tan_10_is_refused()
+    {
+        CameraFrame camera = Camera(-70, 5, Symmetric(60));
+        WindowGeometry window = WindowProjection.Window(camera, 15, Ws, Hs);
+        // At 5 degrees of pitch the bottom tangent tends to -cot(5) = -11.4 as the lift grows.
+        Vec3 lifted = camera.Position + new Vec3(0, 5000, 0);
+
+        OffAxisView view = WindowProjection.ViewFrom(camera, window, lifted);
+
+        Assert.False(view.Valid);
+    }
+
+    [Fact]
     public void A_non_finite_position_gives_no_view()
     {
         CameraFrame camera = Camera(0, 35, GameTangents);

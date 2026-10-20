@@ -146,8 +146,12 @@ namespace HeadTrack.Core
         /// <summary>An eye closer to the screen plane than this fraction of the window depth gives no view.</summary>
         private const double MinDepthFraction = 1e-6;
 
-        /// <summary>Frustum extents beyond this tangent (about 76 degrees) are refused.</summary>
-        private const double MaxTangent = 4.0;
+        /// <summary>
+        /// Frustum extents beyond this tangent (about 84 degrees) are refused as
+        /// degenerate. Large but sane offsets are the mod's to limit (it shrinks
+        /// the eye's offset); this only guards the matrix.
+        /// </summary>
+        private const double MaxTangent = 10.0;
 
         /// <summary>
         /// The window at <paramref name="depth"/> metres in front of the
