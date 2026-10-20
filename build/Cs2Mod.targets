@@ -20,8 +20,8 @@
   </ItemGroup>
 
   <Target Name="Cs2CheckGame" BeforeTargets="ResolveAssemblyReferences">
-    <Error Condition="!Exists('$(Cs2ManagedDir)/Game.dll')"
-           Text="Game.dll not found in Cs2ManagedDir='$(Cs2ManagedDir)'. Pass -p:Cs2GameDir=&lt;game folder&gt;." />
+    <Error Condition="'$(Cs2ManagedDir)' == '' or !Exists('$(Cs2ManagedDir)/Game.dll')"
+           Text="Cities: Skylines II not found (Cs2GameDir='$(Cs2GameDir)'). Set Cs2GameDir to the folder with Cities2.exe: -p:Cs2GameDir=..., an environment variable, or Directory.Build.local.props (see the README)." />
   </Target>
 
   <Target Name="Cs2AddGameReferences" BeforeTargets="ResolveAssemblyReferences" DependsOnTargets="Cs2CheckGame">
@@ -50,7 +50,12 @@
     <Error Condition="'$(Cs2ModFolder)' == ''" Text="Cs2ModFolder is not set for $(MSBuildProjectName)." />
     <PropertyGroup>
       <_Cs2ModDir>$(Cs2ModsDir)/$(Cs2ModFolder)</_Cs2ModDir>
+      <_Cs2ModsParent Condition="'$(Cs2ModsDir)' != ''">$([System.IO.Path]::GetDirectoryName('$(Cs2ModsDir.TrimEnd(`/\`))'))</_Cs2ModsParent>
     </PropertyGroup>
+    <!-- The game creates its user-data folder on its first start; a missing
+         one means a wrong path, so stop rather than create it. -->
+    <Error Condition="'$(_Cs2ModsParent)' == '' or !Exists('$(_Cs2ModsParent)')"
+           Text="The game's user-data folder was not found (Cs2ModsDir='$(Cs2ModsDir)'). Start the game once, or set Cs2UserDataDir to its LocalLow folder (see the README)." />
     <ItemGroup>
       <_Cs2DeployFile Include="$(TargetPath)" />
       <_Cs2DeployFile Include="$(TargetDir)$(TargetName).pdb" Condition="Exists('$(TargetDir)$(TargetName).pdb')" />

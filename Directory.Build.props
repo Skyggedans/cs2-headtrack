@@ -1,6 +1,14 @@
 <Project>
-  <!-- Shared by every project. Game paths can be overridden on the command
-       line (-p:Cs2GameDir=...) or in the environment. -->
+  <!-- Shared by every project.
+
+       Where the game lives differs per machine. Set Cs2GameDir (the folder with
+       Cities2.exe) and, if needed, Cs2UserDataDir (the game's LocalLow folder)
+       on the command line (-p:Cs2GameDir=...), as environment variables of the
+       same names, or in a Directory.Build.local.props next to this file, which
+       git ignores. Otherwise the usual Steam places are looked up. -->
+  <Import Project="$(MSBuildThisFileDirectory)Directory.Build.local.props"
+          Condition="Exists('$(MSBuildThisFileDirectory)Directory.Build.local.props')" />
+
   <PropertyGroup>
     <!-- Mod.props in the official toolchain uses C# 9: the newest the game's
          Burst supports. Nothing here uses Burst, but staying on 9 keeps the
@@ -12,10 +20,26 @@
     <!-- A reference that resolves to an assembly version other than the one
          the game ships must fail the build, not warn. -->
     <MSBuildWarningsAsErrors>$(MSBuildWarningsAsErrors);MSB3277;MSB3268</MSBuildWarningsAsErrors>
+  </PropertyGroup>
 
-    <Cs2GameDir Condition="'$(Cs2GameDir)' == ''">/mnt/D/Games/Cities Skylines II</Cs2GameDir>
-    <Cs2ManagedDir Condition="'$(Cs2ManagedDir)' == ''">$(Cs2GameDir)/Cities2_Data/Managed</Cs2ManagedDir>
-    <Cs2UserDataDir Condition="'$(Cs2UserDataDir)' == ''">$(HOME)/.wine/drive_c/users/$(USER)/AppData/LocalLow/Colossal Order/Cities Skylines II</Cs2UserDataDir>
-    <Cs2ModsDir Condition="'$(Cs2ModsDir)' == ''">$(Cs2UserDataDir)/Mods</Cs2ModsDir>
+  <!-- The game: Steam on Windows, then Steam on Linux (Proton). -->
+  <PropertyGroup>
+    <_Cs2SteamWindows>$(MSBuildProgramFiles32)\Steam\steamapps\common\Cities Skylines II</_Cs2SteamWindows>
+    <_Cs2SteamLinux>$(HOME)/.local/share/Steam/steamapps/common/Cities Skylines II</_Cs2SteamLinux>
+    <Cs2GameDir Condition="'$(Cs2GameDir)' == '' and '$(MSBuildProgramFiles32)' != '' and Exists('$(_Cs2SteamWindows)\Cities2.exe')">$(_Cs2SteamWindows)</Cs2GameDir>
+    <Cs2GameDir Condition="'$(Cs2GameDir)' == '' and '$(HOME)' != '' and Exists('$(_Cs2SteamLinux)/Cities2.exe')">$(_Cs2SteamLinux)</Cs2GameDir>
+    <Cs2ManagedDir Condition="'$(Cs2ManagedDir)' == '' and '$(Cs2GameDir)' != ''">$(Cs2GameDir)/Cities2_Data/Managed</Cs2ManagedDir>
+  </PropertyGroup>
+
+  <!-- The game's user data (saves, logs, Mods): Windows, then Steam's Proton
+       prefix (app 949230), then the default Wine prefix. -->
+  <PropertyGroup>
+    <_Cs2LocalLow>AppData/LocalLow/Colossal Order/Cities Skylines II</_Cs2LocalLow>
+    <_Cs2ProtonData>$(HOME)/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/users/steamuser/$(_Cs2LocalLow)</_Cs2ProtonData>
+    <_Cs2WineData>$(HOME)/.wine/drive_c/users/$(USER)/$(_Cs2LocalLow)</_Cs2WineData>
+    <Cs2UserDataDir Condition="'$(Cs2UserDataDir)' == '' and '$(OS)' == 'Windows_NT' and '$(USERPROFILE)' != ''">$(USERPROFILE)\AppData\LocalLow\Colossal Order\Cities Skylines II</Cs2UserDataDir>
+    <Cs2UserDataDir Condition="'$(Cs2UserDataDir)' == '' and '$(HOME)' != '' and Exists('$(_Cs2ProtonData)')">$(_Cs2ProtonData)</Cs2UserDataDir>
+    <Cs2UserDataDir Condition="'$(Cs2UserDataDir)' == '' and '$(HOME)' != '' and Exists('$(_Cs2WineData)')">$(_Cs2WineData)</Cs2UserDataDir>
+    <Cs2ModsDir Condition="'$(Cs2ModsDir)' == '' and '$(Cs2UserDataDir)' != ''">$(Cs2UserDataDir)/Mods</Cs2ModsDir>
   </PropertyGroup>
 </Project>

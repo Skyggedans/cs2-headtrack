@@ -11,3 +11,7 @@ decomp/
 # Screenshots and live head-pose recordings stay outside the history.
 shots/
 recordings/
+# This machine's game paths (see Directory.Build.props).
+Directory.Build.local.props
+# A real debug config holds local paths; the .example is the tracked one.
+HeadTrack.debug.cfg
