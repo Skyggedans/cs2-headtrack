@@ -13,7 +13,7 @@ namespace HeadTrack.Core
     /// counters and <see cref="Error"/>. Under Wine the socket is a host socket,
     /// so a Linux sender such as tobii-opentrack reaches it directly.
     /// </summary>
-    public sealed class UdpPoseReceiver : IDisposable
+    public sealed class UdpPoseReceiver : IPoseReceiver
     {
         /// <summary>How long a blocked receive waits before re-checking the stop flag.</summary>
         private const int ReceiveTimeoutMs = 250;
@@ -26,6 +26,7 @@ namespace HeadTrack.Core
         private Socket? m_Socket;
         private Thread? m_Thread;
         private volatile bool m_Stop;
+        private volatile string? m_Fault;
         private long m_Received;
         private long m_Rejected;
 
@@ -45,6 +46,9 @@ namespace HeadTrack.Core
 
         public bool IsRunning => m_Thread != null && m_Thread.IsAlive;
 
+        /// <summary>Why the receive thread ended by itself (a socket error), or null: a stop is not a fault.</summary>
+        public string? Fault => m_Fault;
+
         /// <summary>Datagrams received, valid or not.</summary>
         public long Received => Interlocked.Read(ref m_Received);
 
@@ -59,6 +63,7 @@ namespace HeadTrack.Core
         {
             Stop();
             Error = null;
+            m_Fault = null;
             var socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
             try
             {
@@ -124,12 +129,20 @@ namespace HeadTrack.Core
                     Interlocked.Increment(ref m_Rejected);
                     continue;
                 }
-                catch (SocketException)
+                catch (SocketException e)
                 {
+                    if (!m_Stop)
+                    {
+                        m_Fault = $"{e.SocketErrorCode} ({e.Message})";
+                    }
                     return;
                 }
                 catch (ObjectDisposedException)
                 {
+                    if (!m_Stop)
+                    {
+                        m_Fault = "the socket was closed";
+                    }
                     return;
                 }
                 long now = m_Clock();
