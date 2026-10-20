@@ -22,6 +22,22 @@ namespace HeadTrack.Core
         string? Fault { get; }
     }
 
+    /// <summary>Where a <see cref="PoseListener"/> stands against the address and port it was last asked for.</summary>
+    public enum ListenerState
+    {
+        /// <summary>Not asked to listen yet, or disposed.</summary>
+        Idle,
+
+        /// <summary>Listening where it was asked.</summary>
+        Listening,
+
+        /// <summary>The asked-for port could not be had; still listening on the old one, retrying.</summary>
+        KeptOld,
+
+        /// <summary>Not listening at all (the bind failed or the receiver died); retrying.</summary>
+        Down,
+    }
+
     /// <summary>
     /// Keeps a pose receiver listening where the settings say, called once a
     /// frame from the main thread. A new port is bound before the old one is
@@ -54,6 +70,32 @@ namespace HeadTrack.Core
         public IPoseReceiver? Receiver => m_Receiver;
 
         public string Status { get; private set; } = "not started";
+
+        /// <summary>Where the receiver stands against the last <see cref="Update"/>'s wish.</summary>
+        public ListenerState State
+        {
+            get
+            {
+                IPoseReceiver? receiver = m_Receiver;
+                if (receiver != null && receiver.IsRunning)
+                {
+                    return m_Address != null && m_Address.Equals(m_Wanted) && m_Port == m_WantedPort
+                        ? ListenerState.Listening
+                        : ListenerState.KeptOld;
+                }
+                return m_Wanted == null ? ListenerState.Idle : ListenerState.Down;
+            }
+        }
+
+        /// <summary>The port the receiver listens on now, or 0 when none runs.</summary>
+        public int ListeningPort
+        {
+            get
+            {
+                IPoseReceiver? receiver = m_Receiver;
+                return receiver != null && receiver.IsRunning ? receiver.Port : 0;
+            }
+        }
 
         /// <summary>
         /// Listens on <paramref name="address"/>:<paramref name="port"/>,
@@ -122,6 +164,8 @@ namespace HeadTrack.Core
         {
             m_Receiver?.Dispose();
             m_Receiver = null;
+            m_Wanted = null;
+            m_WantedPort = -1;
             Status = "stopped";
         }
 

@@ -166,6 +166,52 @@ public class PoseListenerTests
     }
 
     [Fact]
+    public void Its_state_says_whether_it_listens_where_it_was_asked()
+    {
+        var busy = new HashSet<int> { 5000 };
+        var made = new List<FakeReceiver>();
+        var listener = new PoseListener(() =>
+        {
+            var receiver = new FakeReceiver(port => !busy.Contains(port));
+            made.Add(receiver);
+            return receiver;
+        });
+        Assert.Equal(ListenerState.Idle, listener.State);
+
+        listener.Update(0.0, IPAddress.Loopback, 4242);
+        Assert.Equal(ListenerState.Listening, listener.State);
+        Assert.Equal(4242, listener.ListeningPort);
+
+        listener.Update(0.1, IPAddress.Loopback, 5000);
+        Assert.Equal(ListenerState.KeptOld, listener.State);
+        Assert.Equal(4242, listener.ListeningPort);
+
+        busy.Remove(5000);
+        listener.Update(0.1 + PoseListener.FirstRetrySeconds, IPAddress.Loopback, 5000);
+        Assert.Equal(ListenerState.Listening, listener.State);
+        Assert.Equal(5000, listener.ListeningPort);
+
+        made[^1].Die("ConnectionReset");
+        listener.Update(2.0, IPAddress.Loopback, 5000);
+        Assert.Equal(ListenerState.Down, listener.State);
+        Assert.Equal(0, listener.ListeningPort);
+
+        listener.Dispose();
+        Assert.Equal(ListenerState.Idle, listener.State);
+    }
+
+    [Fact]
+    public void A_first_port_that_cannot_be_had_leaves_it_down()
+    {
+        using var listener = new PoseListener(() => new FakeReceiver(_ => false));
+
+        listener.Update(0.0, IPAddress.Loopback, 4242);
+
+        Assert.Equal(ListenerState.Down, listener.State);
+        Assert.Equal(0, listener.ListeningPort);
+    }
+
+    [Fact]
     public void Stopping_a_receiver_is_not_a_fault()
     {
         var ring = new PoseRing(4);
