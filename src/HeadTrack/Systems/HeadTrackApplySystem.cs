@@ -197,7 +197,12 @@ namespace HeadTrack.Systems
             FrameResult result = Runtime.Head.Compute(now, frame, m_LastDepth, gateOpen, cut, m_Clamp, freeze, maxGain);
             if (result.Weight > 0)
             {
-                QueueObstacleCast(frame.Near);
+                // The game keeps its own camera this far from buildings; other
+                // cameras get half a metre (the photo camera's near plane is 1 cm).
+                double clearance = m_Modes.Mode == ViewMode.Gameplay && gameplay != null
+                    ? Math.Max(2 * frame.Near, 0.5 * gameplay.zoomRange.min)
+                    : Math.Max(2 * frame.Near, 0.5);
+                QueueObstacleCast(clearance);
             }
             Runtime.LastFrame = result;
             Runtime.LastRendered = rendered;
@@ -356,10 +361,9 @@ namespace HeadTrack.Systems
         }
 
         /// <summary>Casts the move the head asks for this frame; the result comes with the next frame.</summary>
-        private void QueueObstacleCast(double near)
+        private void QueueObstacleCast(double clearance)
         {
-            // The photo camera's near plane is 1 cm: keep half a metre at least.
-            if (!m_HasGroundWanted || !ObstacleCast.TryCreate(m_Base, m_GroundWanted, Math.Max(2 * near, 0.5), out ObstacleCast cast))
+            if (!m_HasGroundWanted || !ObstacleCast.TryCreate(m_Base, m_GroundWanted, clearance, out ObstacleCast cast))
             {
                 return;
             }
