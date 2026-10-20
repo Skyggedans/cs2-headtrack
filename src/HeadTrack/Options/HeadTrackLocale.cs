@@ -1,5 +1,8 @@
 using System.Collections.Generic;
+using System.Globalization;
 using Colossal;
+using Game.SceneFlow;
+using HeadTrack.Core;
 
 namespace HeadTrack.Options
 {
@@ -25,6 +28,26 @@ namespace HeadTrack.Options
 
         public void Unload()
         {
+        }
+
+        /// <summary>The pose listener's state as the options page shows it, in the game's language.</summary>
+        public static string ListenerStatus(ListenerState state, int wantedPort, int listeningPort)
+        {
+            bool russian = GameManager.instance?.localizationManager?.activeLocaleId == "ru-RU";
+            string T(string english, string russianText) => russian ? russianText : english;
+            string F(string format, params object[] values) => string.Format(CultureInfo.InvariantCulture, format, values);
+            switch (state)
+            {
+                case ListenerState.Listening:
+                    return F(T("Listening on port {0}", "Слушаю порт {0}"), listeningPort);
+                case ListenerState.KeptOld:
+                    return F(T("Port {0} is not available; still listening on port {1}", "Порт {0} недоступен; слушаю порт {1}"),
+                        wantedPort, listeningPort);
+                case ListenerState.Down:
+                    return F(T("Cannot listen on port {0}; retrying", "Не удаётся слушать порт {0}; пробую снова"), wantedPort);
+                default:
+                    return T("Not listening yet", "Пока не слушаю");
+            }
         }
 
         private static Dictionary<string, string> Texts(HeadTrackOptions o, bool russian)
@@ -123,6 +146,9 @@ namespace HeadTrack.Options
             Option(nameof(HeadTrackOptions.PortText), "UDP port", "UDP-порт",
                 "The port the head poses arrive on (OpenTrack's \"UDP over network\" output, 127.0.0.1); 1024 to 65535.",
                 "Порт, на который приходят данные о голове (выход OpenTrack «UDP over network», 127.0.0.1); от 1024 до 65535.");
+            Option(nameof(HeadTrackOptions.ListenerStatus), "Status", "Состояние",
+                "Which port the mod listens on now. A warning: not the one above (busy or not allowed); HeadTrack.log says why.",
+                "Какой порт мод сейчас слушает. Предупреждение: не тот, что выше (занят или недоступен); причина — в HeadTrack.log.");
             Option(nameof(HeadTrackOptions.InvertX), "Invert left/right", "Инвертировать влево/вправо",
                 "Flips the tracker's sideways axis.", "Меняет направление оси трекера влево-вправо.");
             Option(nameof(HeadTrackOptions.InvertY), "Invert up/down", "Инвертировать вверх/вниз",
