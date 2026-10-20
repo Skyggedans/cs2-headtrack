@@ -65,7 +65,6 @@ namespace HeadTrack
         public static bool FollowCamera = true;
         public static bool PhotoMode;
         public static ToolTracking WhileBuilding = ToolTracking.GainUpToOne;
-        public static bool SuppressHeadMotionBlur = true;
 
         private static string? s_ListenerStatus;
         public static int DebugPort;
@@ -131,7 +130,6 @@ namespace HeadTrack
             FollowCamera = o.FollowCamera;
             PhotoMode = o.PhotoMode;
             WhileBuilding = o.WhileBuilding;
-            SuppressHeadMotionBlur = o.SuppressHeadMotionBlur;
             PosePort = o.Port >= SettingsLimits.PortMin && o.Port <= SettingsLimits.PortMax ? o.Port : 4242;
             Validate();
         }
@@ -207,7 +205,6 @@ namespace HeadTrack
                 case "pin_lod_fov":
                 case "follow_camera":
                 case "photo_mode":
-                case "head_blur":
                     bool flag = value == "1" || value.Equals("true", StringComparison.OrdinalIgnoreCase);
                     if (!flag && value != "0" && !value.Equals("false", StringComparison.OrdinalIgnoreCase))
                     {
@@ -224,9 +221,6 @@ namespace HeadTrack
                             break;
                         case "photo_mode":
                             PhotoMode = flag;
-                            break;
-                        case "head_blur":
-                            SuppressHeadMotionBlur = !flag;
                             break;
                         default:
                             PinLodFov = flag;

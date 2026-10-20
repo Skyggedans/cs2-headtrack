@@ -60,9 +60,9 @@ namespace HeadTrack.Debugging
                 ScreenSpaceAmbientOcclusion? ao = stack?.GetComponent<ScreenSpaceAmbientOcclusion>();
                 if (blur != null && ao != null)
                 {
-                    Add("motionBlur active={0} intensity={1:F2} cameraBlur={2} clamp={3} suppressHead={4} ao intensity={5:F2}",
+                    Add("motionBlur active={0} intensity={1:F2} cameraBlur={2} clamp={3} ao intensity={4:F2}",
                         blur.IsActive(), blur.intensity.value, blur.cameraMotionBlur.value, blur.specialCameraClampMode.value,
-                        Runtime.SuppressHeadMotionBlur, ao.intensity.value);
+                        ao.intensity.value);
                 }
             }
             UdpPoseReceiver? receiver = Runtime.Receiver;

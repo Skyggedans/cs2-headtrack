@@ -57,7 +57,6 @@ namespace HeadTrack
             Patch("the LOD field of view pin", () => LodPinPatch.Apply(s_Harmony));
             Patch("GTAO for the off-axis view", () => AoOffAxisPatch.Apply(s_Harmony));
             Patch("vanilla save previews", () => CapturePatch.Apply(s_Harmony));
-            Patch("motion blur without the head's motion", () => HeadMotionBlurPatches.Apply(s_Harmony));
 
             s_Host = new GameObject(nameof(HeadTrack));
             UnityEngine.Object.DontDestroyOnLoad(s_Host);
@@ -81,7 +80,6 @@ namespace HeadTrack
             Runtime.Listener.Dispose();
             CameraRestorer.Restore();
             Runtime.LodPinActive = false;
-            HeadMotionBlurPatches.Remove();
             s_Harmony?.UnpatchAll(HarmonyId);
             s_Harmony = null;
             Log.Info("OnDispose");

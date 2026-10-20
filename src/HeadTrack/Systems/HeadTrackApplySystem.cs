@@ -13,7 +13,6 @@ using Game.Tools;
 using Game.UI.InGame;
 using HeadTrack.Core;
 using HeadTrack.Options;
-using HeadTrack.Rendering;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Jobs;
@@ -214,12 +213,6 @@ namespace HeadTrack.Systems
                     Runtime.VanillaLodFov = culling.lodParameters.fieldOfView;
                 }
                 Write(camera, result.View);
-                // The head's part of the camera motion, for motion blur to leave out.
-                HeadMotionBlurPatches.Target = camera;
-                Vec3 offset = result.View.Position - frame.Position;
-                HeadMotionBlurPatches.CurrentOffset = Runtime.SuppressHeadMotionBlur
-                    ? new Vector3((float)Vec3.Dot(offset, frame.Right), (float)Vec3.Dot(offset, frame.Up), (float)Vec3.Dot(offset, frame.Forward))
-                    : Vector3.zero;
                 if (Runtime.PinLodFov)
                 {
                     Runtime.LodPinActive = true;

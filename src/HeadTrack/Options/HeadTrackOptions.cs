@@ -143,9 +143,6 @@ namespace HeadTrack.Options
         [SettingsUISection(AdvancedTab, CameraGroup)]
         public ToolTracking WhileBuilding { get; set; }
 
-        [SettingsUISection(AdvancedTab, CameraGroup)]
-        public bool SuppressHeadMotionBlur { get; set; }
-
         [SettingsUISection(AdvancedTab, InputGroup)]
         public HeadPoseSource Source { get; set; }
 
@@ -210,7 +207,6 @@ namespace HeadTrack.Options
             FollowCamera = true;
             PhotoMode = false;
             WhileBuilding = ToolTracking.GainUpToOne;
-            SuppressHeadMotionBlur = true;
             Source = HeadPoseSource.OpenTrack;
             Port = 4242;
             m_PortText = null;

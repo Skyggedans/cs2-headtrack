@@ -1,4 +1,3 @@
-using HeadTrack.Rendering;
 using UnityEngine;
 
 namespace HeadTrack.Systems
@@ -14,7 +13,6 @@ namespace HeadTrack.Systems
             }
             Runtime.Dirty = false;
             PutBack(Runtime.Snapshot);
-            HeadMotionBlurPatches.CurrentOffset = Vector3.zero;
         }
 
         /// <summary>The vanilla camera from <paramref name="snapshot"/>, leaving <see cref="Runtime.Dirty"/> as it is.</summary>

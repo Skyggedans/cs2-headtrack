@@ -117,9 +117,6 @@ namespace HeadTrack.Options
             Option(nameof(HeadTrackOptions.WhileBuilding), "While a building tool is active", "Пока выбран инструмент строительства",
                 "Full: as always. Gain at most 1: a high gain is lowered so the world under the cursor moves less. Off: the view stays still.",
                 "Полностью: как обычно. Усиление не больше 1: большое усиление снижается, чтобы мир под курсором двигался меньше. Выкл.: вид не двигается.");
-            Option(nameof(HeadTrackOptions.SuppressHeadMotionBlur), "No motion blur from head movement", "Без размытия от движения головы",
-                "The game's motion blur stays for camera moves but ignores what only your head moves.",
-                "Размытие в движении остаётся для движений камеры, но не срабатывает, когда двигается только голова.");
             Option(nameof(HeadTrackOptions.Source), "Pose source", "Источник положения",
                 "OpenTrack: its \"UDP over network\" output, centred by OpenTrack. Absolute: a sender that gives the eye's position from the screen centre; the mod takes the first pose as the centre.",
                 "OpenTrack: его выход «UDP over network», центрирует сам OpenTrack. Абсолютно: отправитель передаёт положение глаза от центра экрана; первая поза берётся за центр.");

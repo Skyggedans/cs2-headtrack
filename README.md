@@ -72,7 +72,6 @@ fraction of a second, so nothing jumps.
 | When following a citizen or vehicle | The effect on the follow camera (on). |
 | In photo mode | The effect on the photo-mode camera (off; screenshots then show the shifted view). |
 | While a building tool is active | *Full*, *Gain at most 1* (default: the world under the cursor moves no more than a window would show) or *Off*. |
-| No motion blur from head movement | Motion blur stays for camera moves but ignores what only your head moves (on). |
 | Pose source | *OpenTrack* (centred by OpenTrack) or *Absolute* (a sender that gives the eye's position from the screen centre; the mod takes the first pose as the centre). |
 | UDP port | 4242 unless OpenTrack sends elsewhere. |
 | Invert axes | Flip a tracker axis. |
@@ -91,6 +90,11 @@ see the shift. Everything in between — culling, rendering, the next frame's
 mouse ray — sees the head-coupled camera. The camera never goes lower above
 ground or water than the game keeps its own, never into a building (a ray
 cast along the move stops it), and its offset is limited softly.
+
+HDRP's ambient occlusion is corrected for the off-axis view, and save
+previews are rendered with the game's own camera. Moving your head does not
+blur the picture: the game's motion blur already clamps the camera's
+translation.
 
 The poses go through a 1€ filter and are resampled to every frame; when the
 face is lost the effect fades out, and when it is found again the view fades

@@ -28,7 +28,6 @@ namespace HeadTrack.Rendering
             public Camera.GateFitMode GateFit;
             public float FocalLength;
             public Vector2 LensShift;
-            public Vector3 Offset;
         }
 
         public static bool Apply(Harmony harmony)
@@ -64,11 +63,9 @@ namespace HeadTrack.Rendering
                 GateFit = camera.gateFit,
                 FocalLength = camera.focalLength,
                 LensShift = camera.lensShift,
-                Offset = HeadMotionBlurPatches.CurrentOffset,
             };
             // Vanilla for the capture; Dirty stays set, so next frame's Restore still runs.
             CameraRestorer.PutBack(Runtime.Snapshot);
-            HeadMotionBlurPatches.CurrentOffset = Vector3.zero;
         }
 
         public static Exception? Finalizer(Exception? __exception, Camera camera, Applied __state)
@@ -90,7 +87,6 @@ namespace HeadTrack.Rendering
                     camera.focalLength = __state.FocalLength;
                 }
                 camera.lensShift = __state.LensShift;
-                HeadMotionBlurPatches.CurrentOffset = __state.Offset;
             }
             return __exception;
         }
