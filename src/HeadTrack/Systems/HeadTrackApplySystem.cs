@@ -63,6 +63,7 @@ namespace HeadTrack.Systems
         private WaterSurfaceData<half> m_MaxHeight;
         private bool m_HasTerrain;
         private bool m_HasWater;
+        private bool m_OnMaxHeight;
         private double m_FloorOffset;
         private double m_NextStatus;
         private long m_StatusSamples;
@@ -276,6 +277,11 @@ namespace HeadTrack.Systems
                 maxHeight.Complete();
                 m_HasWater = m_Surfaces.depths.isCreated;
             }
+            // Each camera keeps its floor on the surface its own controller
+            // clamps it to: the gameplay camera on the water system's coarse
+            // max-height grid (CameraController), the orbit and cinematic
+            // cameras on the water over the terrain (CinemachineRestrictToTerrain).
+            m_OnMaxHeight = viewMode == ViewMode.Gameplay || viewMode == ViewMode.MapTiles;
             // The game's own lift for the gameplay camera (its zoom is stale
             // in other modes), 1 m otherwise; never above the vanilla camera.
             m_FloorOffset = 0;
@@ -388,9 +394,9 @@ namespace HeadTrack.Systems
                 return position;
             }
             var point = new float3((float)position.X, (float)position.Y, (float)position.Z);
-            float ground = m_HasWater
-                ? WaterUtils.SampleHeight(ref m_MaxHeight, ref m_Surfaces, ref m_Height, point)
-                : TerrainUtils.SampleHeight(ref m_Height, point);
+            float ground = !m_HasWater ? TerrainUtils.SampleHeight(ref m_Height, point)
+                : m_OnMaxHeight ? WaterUtils.SampleHeight(ref m_MaxHeight, ref m_Surfaces, ref m_Height, point)
+                : WaterUtils.SampleHeight(ref m_Surfaces.depths, ref m_Height, point);
             double floor = ground + m_FloorOffset;
             return position.Y < floor ? new Vec3(position.X, floor, position.Z) : position;
         }
