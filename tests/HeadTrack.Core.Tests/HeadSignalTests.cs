@@ -172,6 +172,68 @@ public class HeadSignalTests
     }
 
     [Fact]
+    public void A_still_head_sending_identical_packets_stays_present()
+    {
+        // A source that keeps sending the same pose: the ring drops the
+        // repeats, so only the first reaches AddSample; the rest only prove
+        // the source is alive.
+        var signal = new HeadSignal(new SignalSettings());
+        double now = 0;
+        for (int i = 0; i < 33; i++)
+        {
+            now = i * Period;
+            signal.AddSample(now, new Vec3(i, 0, 600));
+            signal.Update(now + 0.001);
+        }
+        HeadSignalOutput output = default;
+        Vec3 halfway = default;
+        for (int i = 1; i <= 100; i++)
+        {
+            double t = now + i * Period;
+            signal.MarkAlive(t);
+            output = signal.Update(t + 0.001);
+            if (i == 50)
+            {
+                halfway = output.Eye;
+            }
+        }
+
+        Assert.Equal(1.0, output.Presence, 9);
+        Assert.True(output.Age < 0.01, $"age {output.Age:F3} s");
+        Assert.True((output.Eye - halfway).Length < 1e-9, $"drifted {(output.Eye - halfway).Length:F3} mm while still");
+    }
+
+    [Fact]
+    public void Silence_still_fades_the_presence_when_nothing_arrives()
+    {
+        var settings = new SignalSettings();
+        var signal = new HeadSignal(settings);
+        for (int i = 0; i < 33; i++)
+        {
+            signal.AddSample(i * Period, new Vec3(0, 0, 600));
+            signal.Update(i * Period + 0.001);
+        }
+        HeadSignalOutput output = default;
+        for (double t = 1.0; t < 3.0; t += 1.0 / 60)
+        {
+            output = signal.Update(t);
+        }
+
+        Assert.Equal(0.0, output.Presence, 9);
+    }
+
+    [Fact]
+    public void Marking_alive_before_any_sample_gives_no_eye()
+    {
+        var signal = new HeadSignal(new SignalSettings());
+
+        signal.MarkAlive(1.0);
+        HeadSignalOutput output = signal.Update(1.01);
+
+        Assert.False(output.HasEye);
+    }
+
+    [Fact]
     public void Before_any_sample_there_is_no_eye()
     {
         var signal = new HeadSignal(new SignalSettings());

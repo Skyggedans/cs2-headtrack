@@ -97,6 +97,13 @@ namespace HeadTrack.Systems
             {
                 Runtime.Head.AddPose(Runtime.TicksToSeconds(sample.Timestamp), sample.Pose);
             }
+            long lastArrival = Runtime.Ring.LastArrival;
+            if (lastArrival > 0)
+            {
+                // Repeats of the previous pose were dropped by the ring, but a
+                // still head sends nothing else: they keep it present.
+                Runtime.Head.MarkAlive(Runtime.TicksToSeconds(lastArrival));
+            }
             m_StatusSamples += m_Samples.Count;
 
             Runtime.CoverageActive = false;

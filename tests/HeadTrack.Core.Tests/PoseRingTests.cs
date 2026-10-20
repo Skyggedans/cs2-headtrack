@@ -55,6 +55,18 @@ public class PoseRingTests
     }
 
     [Fact]
+    public void A_repeat_still_counts_as_an_arrival()
+    {
+        var ring = new PoseRing(16);
+        Assert.Equal(0, ring.LastArrival);
+        ring.Push(100, Pose(1));
+        ring.Push(104, Pose(1));
+        ring.Push(108, Pose(1));
+
+        Assert.Equal(108, ring.LastArrival);
+    }
+
+    [Fact]
     public void A_pose_equal_to_an_older_one_but_not_the_last_is_kept()
     {
         var ring = new PoseRing(16);

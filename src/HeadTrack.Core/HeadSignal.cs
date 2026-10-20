@@ -102,6 +102,7 @@ namespace HeadTrack.Core
         private int m_IntervalsNext;
         private bool m_HasSample;
         private double m_LastSample;
+        private double m_LastAlive;
         private bool m_HasUpdate;
         private double m_LastUpdate;
         private double m_PresenceProgress;
@@ -118,14 +119,28 @@ namespace HeadTrack.Core
             m_Filter = new EyeFilter(settings.Lateral, settings.Depth);
         }
 
+        /// <summary>
+        /// Notes that the source sent a packet at <paramref name="time"/> that
+        /// repeated the previous pose: no new sample, but the head is there,
+        /// so the presence holds and the next sample is not a restart.
+        /// </summary>
+        public void MarkAlive(double time)
+        {
+            if (m_HasSample && time > m_LastAlive)
+            {
+                m_LastAlive = time;
+            }
+        }
+
         /// <summary>Feeds one sample; samples must come in arrival order.</summary>
         public void AddSample(double time, Vec3 eye)
         {
             double dt = m_Settings.NominalPeriod;
             if (m_HasSample)
             {
+                double gapLimit = m_Settings.RestartGapPeriods * EstimatePeriod();
                 double interval = time - m_LastSample;
-                if (interval > m_Settings.RestartGapPeriods * EstimatePeriod())
+                if (time - Math.Max(m_LastSample, m_LastAlive) > gapLimit)
                 {
                     m_Filter.Reset();
                     m_History.Clear();
@@ -133,7 +148,10 @@ namespace HeadTrack.Core
                 }
                 else if (interval > 0)
                 {
-                    RecordInterval(interval);
+                    if (interval <= gapLimit)
+                    {
+                        RecordInterval(interval);
+                    }
                     dt = interval;
                 }
             }
@@ -145,6 +163,10 @@ namespace HeadTrack.Core
             }
             m_HasSample = true;
             m_LastSample = time;
+            if (time > m_LastAlive)
+            {
+                m_LastAlive = time;
+            }
         }
 
         /// <summary>The eye for a frame at <paramref name="now"/> (seconds, same clock as the samples).</summary>
@@ -158,7 +180,7 @@ namespace HeadTrack.Core
                 return new HeadSignalOutput(false, Vec3.Zero, 0, double.PositiveInfinity, EstimatePeriod(), 0, true);
             }
 
-            double age = now - m_LastSample;
+            double age = now - Math.Max(m_LastSample, m_LastAlive);
             bool present = age <= m_Settings.PresenceTimeout;
             m_PresenceProgress = present
                 ? Math.Min(1, m_PresenceProgress + frameDt / m_Settings.FadeIn)
@@ -213,6 +235,7 @@ namespace HeadTrack.Core
             m_IntervalsStored = 0;
             m_IntervalsNext = 0;
             m_HasSample = false;
+            m_LastAlive = 0;
             m_HasUpdate = false;
             m_PresenceProgress = 0;
             m_HasOutput = false;

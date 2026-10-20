@@ -100,6 +100,12 @@ namespace HeadTrack.Core
             Signal.AddSample(time, eyeMm);
         }
 
+        /// <summary>Notes a packet that repeated the previous pose (the source is alive, the head still).</summary>
+        public void MarkAlive(double time)
+        {
+            Signal.MarkAlive(time);
+        }
+
         /// <summary>Feeds a packet's pose that arrived at <paramref name="time"/> (s).</summary>
         public void AddPose(double time, OpenTrackPose pose)
         {

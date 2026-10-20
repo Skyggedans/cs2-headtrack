@@ -31,6 +31,7 @@ namespace HeadTrack.Core
         private long m_Count;
         private bool m_HasLast;
         private OpenTrackPose m_Last;
+        private long m_LastArrival;
 
         public PoseRing(int capacity)
         {
@@ -47,10 +48,26 @@ namespace HeadTrack.Core
         /// <summary>Samples overwritten before anyone could read them.</summary>
         public long Overwritten { get; private set; }
 
+        /// <summary>
+        /// When the latest packet arrived, a repeat or not (0 before any): a
+        /// still head sends nothing but repeats, and is still there.
+        /// </summary>
+        public long LastArrival
+        {
+            get
+            {
+                lock (m_Lock)
+                {
+                    return m_LastArrival;
+                }
+            }
+        }
+
         public void Push(long timestamp, OpenTrackPose pose)
         {
             lock (m_Lock)
             {
+                m_LastArrival = timestamp;
                 if (m_HasLast && pose.BitwiseEquals(m_Last))
                 {
                     Duplicates++;
