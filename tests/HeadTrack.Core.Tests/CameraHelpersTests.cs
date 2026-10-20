@@ -196,3 +196,21 @@ public class EffectRampTests
         Assert.True(Math.Abs(down - up) < 0.05, $"jumped from {up:F3} to {down:F3}");
     }
 }
+
+public class GroundFloorTests
+{
+    [Fact]
+    public void The_gameplay_floor_is_the_games_own_lift()
+    {
+        // CameraController: half the smallest zoom, plus a tenth of the zoom beyond it.
+        Assert.Equal(5.0, GroundFloor.Gameplay(zoom: 10, zoomMin: 10), 12);
+        Assert.Equal(104.0, GroundFloor.Gameplay(zoom: 1000, zoomMin: 10), 12);
+    }
+
+    [Fact]
+    public void Where_the_vanilla_camera_clears_it_the_floor_is_what_the_game_keeps()
+    {
+        Assert.Equal(GroundFloor.OrbitPadding, GroundFloor.Offset(GroundFloor.OrbitPadding, vanillaClearance: 3.0), 12);
+        Assert.Equal(5.0, GroundFloor.Offset(GroundFloor.Gameplay(zoom: 10, zoomMin: 10), vanillaClearance: 5.2), 12);
+    }
+}

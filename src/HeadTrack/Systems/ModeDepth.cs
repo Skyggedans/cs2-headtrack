@@ -74,13 +74,10 @@ namespace HeadTrack.Systems
         /// </summary>
         public static double FloorOffset(ViewMode mode, CameraController? gameplay, double vanillaClearance)
         {
-            double wanted = 1.0;
-            if (mode == ViewMode.Gameplay && gameplay != null)
-            {
-                double zoomMin = gameplay.zoomRange.min;
-                wanted = 0.5 * zoomMin + 0.1 * Math.Max(0, gameplay.zoom - zoomMin);
-            }
-            return Math.Max(0.5, Math.Min(wanted, vanillaClearance));
+            double wanted = mode == ViewMode.Gameplay && gameplay != null
+                ? GroundFloor.Gameplay(gameplay.zoom, gameplay.zoomRange.min)
+                : GroundFloor.OrbitPadding;
+            return GroundFloor.Offset(wanted, vanillaClearance);
         }
     }
 }

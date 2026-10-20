@@ -91,6 +91,23 @@ namespace HeadTrack.Core
         }
     }
 
+    /// <summary>How high above ground or water the shifted camera stays.</summary>
+    public static class GroundFloor
+    {
+        /// <summary>CinemachineRestrictToTerrain's padding (m): the orbit and cinematic cameras stay this high above the surface.</summary>
+        public const double OrbitPadding = 1.0;
+
+        /// <summary>The gameplay camera's floor above the surface (m), as CameraController keeps it.</summary>
+        public static double Gameplay(double zoom, double zoomMin) => 0.5 * zoomMin + 0.1 * Math.Max(0, zoom - zoomMin);
+
+        /// <summary>
+        /// The floor's height above the surface: what the game keeps
+        /// (<paramref name="wanted"/>), never more than the vanilla camera
+        /// itself keeps, so a ramp across modes never lifts it.
+        /// </summary>
+        public static double Offset(double wanted, double vanillaClearance) => Math.Max(0.5, Math.Min(wanted, vanillaClearance));
+    }
+
     /// <summary>
     /// The effect's overall weight: rises and falls smoothly when a gate
     /// opens or closes (photo mode, map view, a tool drag), drops at once on
