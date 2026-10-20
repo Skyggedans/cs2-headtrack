@@ -15,18 +15,40 @@ Wine on Linux.
 
 ## Install
 
-You need the .NET 10 SDK and the game.
+You need the game and the .NET 10 SDK. The mod is built against the game's own
+assemblies, so it is built from source on the machine that has the game.
 
 ```sh
 dotnet build src/HeadTrack -t:Deploy
 ```
 
 builds the mod and copies `HeadTrack.dll`, `HeadTrack.Core.dll` (each with its
-`.pdb`) and `0Harmony.dll` into
-`<user data>/Mods/HeadTrack/`, where the game loads local mods. The game and
-user-data folders default to a Wine prefix (`Directory.Build.props`); override
-them with `-p:Cs2GameDir=...` and `-p:Cs2UserDataDir=...`. No launcher or
-developer mode is needed; the mod logs to `Logs/HeadTrack.log`.
+`.pdb`) and `0Harmony.dll` into `<user data>/Mods/HeadTrack/`, where the game
+loads local mods. No launcher or developer mode is needed; the mod logs to
+`<user data>/Logs/HeadTrack.log`.
+
+The build looks for the game and its user data in the usual places:
+
+| | Game folder (`Cs2GameDir`) | User data (`Cs2UserDataDir`) |
+|---|---|---|
+| Windows, Steam | `C:\Program Files (x86)\Steam\steamapps\common\Cities Skylines II` | `%USERPROFILE%\AppData\LocalLow\Colossal Order\Cities Skylines II` |
+| Linux, Steam (Proton) | `~/.local/share/Steam/steamapps/common/Cities Skylines II` | `~/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/users/steamuser/AppData/LocalLow/Colossal Order/Cities Skylines II` |
+| Linux, Wine | where you installed it (name it, below) | `~/.wine/drive_c/users/$USER/AppData/LocalLow/Colossal Order/Cities Skylines II` |
+
+Anywhere else, name the folders: on the command line (`-p:Cs2GameDir=...`), as
+environment variables of the same names, or once in a
+`Directory.Build.local.props` next to `Directory.Build.props` (git ignores it):
+
+```xml
+<Project>
+  <PropertyGroup>
+    <Cs2GameDir>/path/to/Cities Skylines II</Cs2GameDir>
+  </PropertyGroup>
+</Project>
+```
+
+The game folder is the one with `Cities2.exe`. The user-data folder is created
+by the game's first start; Deploy stops rather than create a missing one.
 
 ## Set up OpenTrack
 
@@ -133,18 +155,21 @@ pose every few milliseconds whatever its tracker reports.
 ## Development
 
 ```sh
-dotnet test                       # HeadTrack.Core: the signal, the geometry, the settings
+dotnet test tests/HeadTrack.Core.Tests   # the signal, the geometry, the settings; no game needed
+dotnet test                              # every project first, so this one needs the game
 ```
 
 `src/HeadTrack.Core` holds everything that is not Unity (netstandard2.0,
 tested on .NET); `src/HeadTrack` is the mod (net48, the game's assemblies
-referenced from the game folder, never copied).
+referenced from the game folder, never copied); `probes/` holds the two
+throw-away mods the camera hook was found with.
 
-A `HeadTrack.debug.cfg` next to the mod's DLL (see
+A `HeadTrack.debug.cfg` next to the mod's DLL (start from
 `src/HeadTrack/HeadTrack.debug.cfg.example`) can open a debug channel on
 localhost: `tools/headtrack_send.py` sends test poses and commands (dump the
 camera state, take screenshots, change settings, place the camera, quit the
-game), and `tools/shots.py` compares screenshots. `tools/golden/` generates
+game), and `tools/shots.py` compares screenshots. The channel takes commands
+from any program on the machine, so open it only while testing. `tools/golden/` generates
 the reference vectors the geometry tests check against with an independent
 NumPy implementation; `tools/decompile.sh` decompiles game assemblies into a
 folder outside the repository.
