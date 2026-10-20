@@ -1,3 +1,4 @@
+using HeadTrack.Rendering;
 using UnityEngine;
 
 namespace HeadTrack.Systems
@@ -32,6 +33,7 @@ namespace HeadTrack.Systems
                 camera.focalLength = snapshot.FocalLength;
             }
             camera.lensShift = snapshot.LensShift;
+            HeadMotionBlurPatches.CurrentOffset = Vector3.zero;
         }
     }
 }

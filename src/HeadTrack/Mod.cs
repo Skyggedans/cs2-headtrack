@@ -56,6 +56,7 @@ namespace HeadTrack
             s_Harmony = new Harmony(HarmonyId);
             Patch("culling", () => { CullingPatches.Apply(s_Harmony); return true; });
             Patch("GTAO for the off-axis view", () => AoOffAxisPatch.Apply(s_Harmony));
+            Patch("motion blur without the head's motion", () => HeadMotionBlurPatches.Apply(s_Harmony));
 
             s_Host = new GameObject(nameof(HeadTrack));
             UnityEngine.Object.DontDestroyOnLoad(s_Host);
@@ -80,6 +81,7 @@ namespace HeadTrack
             CameraRestorer.Restore();
             Runtime.CoverageActive = false;
             Runtime.LodPinActive = false;
+            HeadMotionBlurPatches.Remove();
             s_Harmony?.UnpatchAll(HarmonyId);
             s_Harmony = null;
             Log.Info("OnDispose");
