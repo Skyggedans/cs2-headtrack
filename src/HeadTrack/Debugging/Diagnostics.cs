@@ -35,6 +35,8 @@ namespace HeadTrack.Debugging
                 Add("pos={0} shift={1:F3} tan=({2:F5},{3:F5},{4:F5},{5:F5}) near={6:F3} far={7:F1} clamped={8}",
                     view.Position, (view.Position - Runtime.LastVanillaPosition.ToVec3()).Length, tan.Left, tan.Right, tan.Bottom, tan.Top, view.Near, view.Far, frame.Clamped);
             }
+            Add("obstacle allowed={0:F2} lastClear={1:F2} frozen={2} restarts={3} settling={4}",
+                Runtime.ObstacleAllowed, Runtime.LastObstacleClear, frame.Frozen, Runtime.Head.Signal.Restarts, signal.Settling);
             Add("lodFov vanilla={0:F4} engine={1:F4} pinned={2} cover fov={3:F5} aspect={4:F5} substituted={5} replayed={6}",
                 Runtime.VanillaLodFov, Runtime.ShiftedLodFov, Runtime.LodPinActive, Runtime.LastCoverFov, Runtime.LastCoverAspect,
                 CullingPatches.Substituted, CullingPatches.Replayed);

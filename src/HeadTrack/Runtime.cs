@@ -71,6 +71,14 @@ namespace HeadTrack
         public static float ShiftedLodFov;
 
         public static FrameResult LastFrame;
+
+        /// <summary>The debug channel holds the eye as a tool drag would.</summary>
+        public static bool ForceFreeze;
+
+        /// <summary>How far (m) the head may move the camera from the game's position, and what the last cast found.</summary>
+        public static double ObstacleAllowed = double.PositiveInfinity;
+
+        public static double LastObstacleClear = double.NaN;
         public static FrustumTangents LastRendered;
         public static Vector3 LastVanillaPosition;
         public static float LastCoverFov;

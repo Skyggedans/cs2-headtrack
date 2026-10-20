@@ -3,12 +3,16 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Reflection;
 using Cinemachine;
+using Colossal.Mathematics;
 using Game;
+using Game.Common;
 using Game.Rendering;
 using Game.SceneFlow;
 using Game.Simulation;
 using Game.UI.InGame;
 using HeadTrack.Core;
+using Unity.Collections;
+using Unity.Entities;
 using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
@@ -31,14 +35,24 @@ namespace HeadTrack.Systems
         private const double PhysicalSensorHeight = 24.0;
 
         private readonly List<PoseSample> m_Samples = new List<PoseSample>(64);
+        private readonly ObstacleLimiter m_Obstacles = new ObstacleLimiter();
         private CameraUpdateSystem m_CameraUpdate = null!;
         private TerrainSystem m_Terrain = null!;
         private WaterSystem m_Water = null!;
+        private RaycastSystem m_Raycast = null!;
         private Action<CameraUpdateSystem, float3>? m_SetCachedPosition;
         private Func<Vec3, Vec3> m_Clamp = null!;
         private Camera? m_LastCamera;
         private GameMode m_LastMode;
         private IGameCameraController? m_LastController;
+        private Vec3 m_Base;
+        private Vec3 m_GroundWanted;
+        private bool m_HasGroundWanted;
+        private ObstacleCast m_PendingCast;
+        private bool m_CastPending;
+        private bool m_HasObstacleUpdate;
+        private double m_LastObstacleUpdate;
+        private bool m_DragOverWorld;
         private double m_LastDepth = 100;
         private TerrainHeightData m_Height;
         private WaterSurfacesData m_Surfaces;
@@ -59,7 +73,8 @@ namespace HeadTrack.Systems
             m_CameraUpdate = World.GetOrCreateSystemManaged<CameraUpdateSystem>();
             m_Terrain = World.GetOrCreateSystemManaged<TerrainSystem>();
             m_Water = World.GetOrCreateSystemManaged<WaterSystem>();
-            m_Clamp = ClampToGround;
+            m_Raycast = World.GetOrCreateSystemManaged<RaycastSystem>();
+            m_Clamp = ClampPosition;
             MethodInfo? setter = typeof(CameraUpdateSystem)
                 .GetProperty("position", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?
                 .GetSetMethod(true);
@@ -110,6 +125,7 @@ namespace HeadTrack.Systems
 
             Runtime.CoverageActive = false;
             Runtime.LodPinActive = false;
+            double? clear = TakeObstacleResult();
 
             GameManager gameManager = GameManager.instance;
             Camera camera = m_CameraUpdate.activeCamera;
@@ -141,8 +157,16 @@ namespace HeadTrack.Systems
                     frame.Near, frame.Far, gameplay.zoomRange.min);
             }
             PrepareClamp(gameplay);
+            UpdateObstacles(now, cut, clear);
+            m_Base = frame.Position;
+            m_HasGroundWanted = false;
+            bool freeze = Runtime.ForceFreeze || Dragging();
 
-            FrameResult result = Runtime.Head.Compute(now, frame, m_LastDepth, gateOpen, cut, m_Clamp);
+            FrameResult result = Runtime.Head.Compute(now, frame, m_LastDepth, gateOpen, cut, m_Clamp, freeze);
+            if (result.Weight > 0)
+            {
+                QueueObstacleCast(frame.Near);
+            }
             Runtime.LastFrame = result;
             Runtime.LastRendered = rendered;
             Runtime.LastVanillaPosition = transform.position;
@@ -236,6 +260,99 @@ namespace HeadTrack.Systems
         private static double FrameTime() =>
             UnityEngine.Time.unscaledTimeAsDouble + (Runtime.Now - UnityEngine.Time.realtimeSinceStartupAsDouble);
 
+        /// <summary>
+        /// A mouse button held since a press over the world, not the UI: a
+        /// tool is being dragged or the camera turned, so the world must stay
+        /// put under the cursor.
+        /// </summary>
+        private bool Dragging()
+        {
+            UnityEngine.InputSystem.Mouse? mouse = UnityEngine.InputSystem.Mouse.current;
+            if (mouse == null || !(mouse.leftButton.isPressed || mouse.rightButton.isPressed || mouse.middleButton.isPressed))
+            {
+                m_DragOverWorld = false;
+                return false;
+            }
+            if (mouse.leftButton.wasPressedThisFrame || mouse.rightButton.wasPressedThisFrame || mouse.middleButton.wasPressedThisFrame)
+            {
+                Game.Input.InputManager input = Game.Input.InputManager.instance;
+                m_DragOverWorld = input != null && input.controlOverWorld;
+            }
+            return m_DragOverWorld;
+        }
+
+        /// <summary>
+        /// What the segment cast last frame found: the clear length along it
+        /// (+∞ when it hit nothing), or null when nothing was cast or the
+        /// result is missing.
+        /// </summary>
+        private double? TakeObstacleResult()
+        {
+            if (!m_CastPending)
+            {
+                return null;
+            }
+            m_CastPending = false;
+            NativeArray<RaycastResult> results = m_Raycast.GetResult(this);
+            if (!results.IsCreated || results.Length == 0)
+            {
+                return null;
+            }
+            RaycastResult hit = results[0];
+            double clear = hit.m_Owner != Entity.Null ? m_PendingCast.ClearLength(hit.m_Hit.m_NormalizedDistance) : double.PositiveInfinity;
+            Runtime.LastObstacleClear = clear;
+            return clear;
+        }
+
+        private void UpdateObstacles(double now, bool cut, double? clear)
+        {
+            double dt = m_HasObstacleUpdate ? Math.Min(0.1, Math.Max(0, now - m_LastObstacleUpdate)) : 0;
+            m_HasObstacleUpdate = true;
+            m_LastObstacleUpdate = now;
+            if (cut)
+            {
+                m_Obstacles.Reset();
+                return;
+            }
+            // The allowance grows back no faster than the head may move the camera.
+            double scale = Runtime.LastFrame.Window.Scale;
+            double metresPerMm = scale > 0 && !double.IsInfinity(scale) ? scale : 1.0;
+            m_Obstacles.Update(dt, clear, Runtime.Settings.Signal.MaxSpeed * metresPerMm);
+            Runtime.ObstacleAllowed = m_Obstacles.Allowed;
+        }
+
+        /// <summary>Casts the move the head asks for this frame; the result comes with the next frame.</summary>
+        private void QueueObstacleCast(double near)
+        {
+            if (!m_HasGroundWanted || !ObstacleCast.TryCreate(m_Base, m_GroundWanted, 2 * near, out ObstacleCast cast))
+            {
+                return;
+            }
+            m_Raycast.AddInput(this, new RaycastInput
+            {
+                m_Line = new Line3.Segment(ToFloat3(cast.Start), ToFloat3(cast.End)),
+                m_TypeMask = TypeMask.StaticObjects | TypeMask.Net,
+                m_CollisionMask = CollisionMask.OnGround | CollisionMask.Overground,
+                m_NetLayerMask = Game.Net.Layer.All,
+            });
+            m_PendingCast = cast;
+            m_CastPending = true;
+        }
+
+        /// <summary>
+        /// Above ground and water as the game keeps its own camera, and no
+        /// farther from it along the move than the last cast found clear.
+        /// </summary>
+        private Vec3 ClampPosition(Vec3 wanted)
+        {
+            Vec3 ground = ClampToGround(wanted);
+            m_GroundWanted = ground;
+            m_HasGroundWanted = true;
+            return ClampToGround(m_Obstacles.Limit(m_Base, ground));
+        }
+
+        private static float3 ToFloat3(Vec3 v) => new float3((float)v.X, (float)v.Y, (float)v.Z);
+
         /// <summary>Keeps the camera at least as high above ground or water as the game keeps its own.</summary>
         private Vec3 ClampToGround(Vec3 position)
         {
@@ -264,11 +381,12 @@ namespace HeadTrack.Systems
                 UdpPoseReceiver? receiver = Runtime.Receiver;
                 Vec3 shift = result.Apply ? result.View.Position - Runtime.LastVanillaPosition.ToVec3() : Vec3.Zero;
                 Mod.Log.Info(string.Format(CultureInfo.InvariantCulture,
-                    "status: {0:F1} samples/s, age {1:F2} s, presence {2:F2}, weight {3:F2}, applied {4:P0}, eye {5} mm, depth {6:F0} m, scale {7:F3} m/mm, shift {8:F1} m, rx {9} rejected {10} repeats {11} lost {12}",
+                    "status: {0:F1} samples/s, age {1:F2} s, presence {2:F2}, weight {3:F2}, applied {4:P0}, eye {5} mm, depth {6:F0} m, scale {7:F3} m/mm, shift {8:F1} m, rx {9} rejected {10} repeats {11} lost {12} restarts {13} period {14:F1} ms, allowed {15:F1} m, frozen {16}",
                     m_StatusSamples / span, signal.Age, signal.Presence, result.Weight,
                     m_StatusFrames > 0 ? (double)m_StatusApplied / m_StatusFrames : 0, result.Eye, result.Depth,
                     result.Window.Scale, shift.Length, receiver?.Received ?? 0, receiver?.Rejected ?? 0,
-                    Runtime.Ring.Duplicates, Runtime.Ring.Overwritten));
+                    Runtime.Ring.Duplicates, Runtime.Ring.Overwritten, Runtime.Head.Signal.Restarts, signal.Period * 1000,
+                    m_Obstacles.Allowed, result.Frozen));
             }
             m_StatusStart = now;
             m_StatusSamples = 0;

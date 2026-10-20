@@ -1,7 +1,10 @@
 using System;
 using System.Collections;
+using System.Globalization;
 using System.IO;
 using System.Net;
+using Game;
+using Game.Rendering;
 using Game.SceneFlow;
 using Game.Simulation;
 using HeadTrack.Core;
@@ -103,7 +106,30 @@ namespace HeadTrack.Debugging
                     Mod.Log.Info("quit requested on the debug channel");
                     GameManager.QuitGame();
                     return;
+                case DebugVerb.Freeze:
+                    Runtime.ForceFreeze = command.Argument == "1";
+                    channel.Reply(from, $"ok freeze {command.Argument}");
+                    return;
+                case DebugVerb.View:
+                    channel.Reply(from, View(command.View, out string placed) ? $"ok view {placed}" : $"err view: {placed}");
+                    return;
             }
+        }
+
+        /// <summary>Puts the gameplay camera's pivot (its height follows the ground), zoom and angles where the command says.</summary>
+        private static bool View(ViewTarget target, out string result)
+        {
+            CameraController? gameplay = Runtime.World?.GetExistingSystemManaged<CameraUpdateSystem>()?.gamePlayController;
+            if (gameplay == null)
+            {
+                result = "no gameplay camera";
+                return false;
+            }
+            gameplay.pivot = new Vector3((float)target.PivotX, gameplay.pivot.y, (float)target.PivotZ);
+            gameplay.zoom = (float)target.Zoom;
+            gameplay.rotation = new Vector3((float)target.Pitch, (float)target.Yaw, 0f);
+            result = string.Format(CultureInfo.InvariantCulture, "pivot={0} zoom={1:F1} rotation={2}", gameplay.pivot, gameplay.zoom, gameplay.rotation);
+            return true;
         }
 
         private bool Pause(bool pause)
