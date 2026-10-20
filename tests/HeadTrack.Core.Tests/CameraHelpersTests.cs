@@ -47,6 +47,23 @@ public class WindowDepthTests
         Assert.Equal(Math.Sqrt(2) * 1000, depth, 6);
     }
 
+    [Theory]
+    [InlineData(-0.5)]
+    [InlineData(-3.0)]
+    [InlineData(-10.0)]
+    public void Looking_up_a_lifted_camera_keeps_the_horizontal_depth(double pitchDeg)
+    {
+        // Looking up the pivot is off screen below the view; the lift must
+        // not shorten the depth there, as the pivot's own depth would.
+        double pitch = pitchDeg * Math.PI / 180;
+        var forward = new Vec3(0, -Math.Sin(pitch), Math.Cos(pitch));
+        var pivot = new Vec3(0, 0, 0);
+
+        double depth = WindowDepth.AimPoint(pivot, pivot - forward * 200 + new Vec3(0, 17, 0), forward, zoom: 200, near: 1, far: 90000, zoomMin: 10);
+
+        Assert.Equal(200, depth, 6);
+    }
+
     [Fact]
     public void Looking_up_the_depth_stays_positive_and_follows_the_horizontal_distance()
     {
@@ -71,17 +88,23 @@ public class WindowDepthTests
         Assert.Equal(800, depth, 3);
     }
 
-    [Fact]
-    public void A_camera_lifted_above_its_orbit_keeps_the_pivot_still_on_screen()
+    [Theory]
+    [InlineData(0.3, 200.0, 17.0)]
+    [InlineData(15.0, 200.0, 17.0)]
+    [InlineData(25.0, 120.0, 9.0)]
+    [InlineData(45.0, 200.0, 17.0)]
+    [InlineData(60.0, 200.0, 17.0)]
+    [InlineData(85.0, 200.0, 17.0)]
+    public void A_camera_lifted_above_its_orbit_keeps_the_pivot_still_on_screen(double pitch, double zoom, double lift)
     {
         // CameraController puts the camera half the smallest zoom above its
-        // orbit, and its soft floor lifts it further: here 17 m at pitch 60.
-        CameraFrame lifted = WindowProjectionTests.Camera(30, 60, WindowProjectionTests.GameTangents);
+        // orbit, and its soft floor lifts it further.
+        CameraFrame lifted = WindowProjectionTests.Camera(30, pitch, WindowProjectionTests.GameTangents);
         var pivot = new Vec3(120, 40, -310);
-        var camera = new CameraFrame(pivot - lifted.Forward * 200 + new Vec3(0, 17, 0), lifted.Right, lifted.Up, lifted.Forward,
+        var camera = new CameraFrame(pivot - lifted.Forward * zoom + new Vec3(0, lift, 0), lifted.Right, lifted.Up, lifted.Forward,
             lifted.Near, lifted.Far, lifted.Tangents);
 
-        double depth = WindowDepth.AimPoint(pivot, camera.Position, camera.Forward, zoom: 200, near: 1, far: 90000, zoomMin: 10);
+        double depth = WindowDepth.AimPoint(pivot, camera.Position, camera.Forward, zoom: zoom, near: 1, far: 90000, zoomMin: 10);
         WindowGeometry window = WindowProjection.Window(camera, depth, 597, 336);
         (double X, double Y) Seen(Vec3 eye)
         {
