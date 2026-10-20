@@ -56,6 +56,7 @@ namespace HeadTrack
             s_Harmony = new Harmony(HarmonyId);
             Patch("culling", () => { CullingPatches.Apply(s_Harmony); return true; });
             Patch("GTAO for the off-axis view", () => AoOffAxisPatch.Apply(s_Harmony));
+            Patch("vanilla save previews", () => CapturePatch.Apply(s_Harmony));
             Patch("motion blur without the head's motion", () => HeadMotionBlurPatches.Apply(s_Harmony));
 
             s_Host = new GameObject(nameof(HeadTrack));

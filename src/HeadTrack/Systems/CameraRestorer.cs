@@ -13,7 +13,13 @@ namespace HeadTrack.Systems
                 return;
             }
             Runtime.Dirty = false;
-            CameraSnapshot snapshot = Runtime.Snapshot;
+            PutBack(Runtime.Snapshot);
+            HeadMotionBlurPatches.CurrentOffset = Vector3.zero;
+        }
+
+        /// <summary>The vanilla camera from <paramref name="snapshot"/>, leaving <see cref="Runtime.Dirty"/> as it is.</summary>
+        public static void PutBack(in CameraSnapshot snapshot)
+        {
             Camera camera = snapshot.Camera;
             if (camera == null)
             {
@@ -33,7 +39,6 @@ namespace HeadTrack.Systems
                 camera.focalLength = snapshot.FocalLength;
             }
             camera.lensShift = snapshot.LensShift;
-            HeadMotionBlurPatches.CurrentOffset = Vector3.zero;
         }
     }
 }
