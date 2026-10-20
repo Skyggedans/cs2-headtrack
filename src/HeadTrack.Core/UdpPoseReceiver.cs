@@ -95,11 +95,12 @@ namespace HeadTrack.Core
             m_Socket = null;
             socket?.Close();
             Thread? thread = m_Thread;
-            m_Thread = null;
-            if (thread != null && thread != Thread.CurrentThread)
+            if (thread != null && thread != Thread.CurrentThread && !thread.Join(JoinTimeoutMs))
             {
-                thread.Join(JoinTimeoutMs);
+                // Still alive: IsRunning keeps saying so.
+                return;
             }
+            m_Thread = null;
         }
 
         public void Dispose()
