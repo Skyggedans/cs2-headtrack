@@ -2,6 +2,7 @@ using System;
 using System.Globalization;
 using System.Reflection;
 using System.Text;
+using Game.Rendering;
 using HeadTrack.Core;
 using HeadTrack.Patches;
 using UnityEngine;
@@ -29,6 +30,12 @@ namespace HeadTrack.Debugging
             Add("eye={0} neutral={1} z0={2:F2} scale={3:F5} depth={4:F2}", frame.Eye, window.NeutralEye, window.Z0, window.Scale, frame.Depth);
             Add("vanillaPos={0} vanillaTan=({1:F5},{2:F5},{3:F5},{4:F5})",
                 Runtime.LastVanillaPosition.ToVec3(), vanilla.Left, vanilla.Right, vanilla.Bottom, vanilla.Top);
+            Game.CameraController? gameplay = Runtime.World?.GetExistingSystemManaged<CameraUpdateSystem>()?.gamePlayController;
+            if (gameplay != null)
+            {
+                Vector3 angles = gameplay.rotation;
+                Add("pivot={0} zoom={1:F2} yaw={2:F2} pitch={3:F2}", gameplay.pivot.ToVec3(), gameplay.zoom, angles.y, angles.x);
+            }
             if (frame.Apply)
             {
                 FrustumTangents tan = view.Tangents;

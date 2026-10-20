@@ -40,13 +40,22 @@ def packet(eye_mm, relative=True, distance=600.0):
 
 
 class PoseStream:
-    """Sends the current target eye at RATE_HZ from a background thread; None sends nothing (face lost)."""
+    """Sends the current target eye at RATE_HZ from a background thread; None sends nothing (face lost).
+
+    sample_rate below rate re-samples the pose only that often and repeats it in
+    between, as OpenTrack does with its filter off (250 Hz packets, a new pose
+    on each 33 Hz tracker frame); wobble adds amp*sin(2*pi*t/period) to x, so
+    the head is never perfectly still.
+    """
 
     def __init__(self, host, port, rate=RATE_HZ, relative=True, distance=600.0):
         self.address = (host, port)
         self.relative = relative
         self.distance = distance
         self.period = 1.0 / rate
+        self.sample_period = 0.0
+        self.wobble = (0.0, 1.0)
+        self.epoch = time.monotonic()
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.lock = threading.Lock()
         self.target = None
@@ -66,24 +75,47 @@ class PoseStream:
             self.glide_seconds = glide_seconds
             self.target = None if eye is None else tuple(float(v) for v in eye)
 
+    def set_rates(self, rate, sample_rate=None):
+        with self.lock:
+            self.period = 1.0 / rate
+            self.sample_period = 1.0 / sample_rate if sample_rate else 0.0
+
+    def set_wobble(self, amp_mm, period_s):
+        with self.lock:
+            self.wobble = (float(amp_mm), float(period_s))
+
     def current(self):
         if self.target is None or self.glide_from is None:
-            return self.target
+            return self.wobbled(self.target)
         progress = (time.monotonic() - self.glide_start) / self.glide_seconds
         if progress >= 1.0:
-            return self.target
+            return self.wobbled(self.target)
         s = progress * progress * (3 - 2 * progress)
-        return tuple(a + (b - a) * s for a, b in zip(self.glide_from, self.target))
+        return self.wobbled(tuple(a + (b - a) * s for a, b in zip(self.glide_from, self.target)))
+
+    def wobbled(self, eye):
+        amp, period = self.wobble
+        if eye is None or amp == 0.0:
+            return eye
+        x = eye[0] + amp * math.sin(2 * math.pi * (time.monotonic() - self.epoch) / period)
+        return (x, eye[1], eye[2])
 
     def run(self):
         next_send = time.monotonic()
+        next_sample = next_send
+        eye = None
         while self.running:
+            now = time.monotonic()
             with self.lock:
-                eye = self.current()
+                if self.sample_period <= 0.0 or now >= next_sample:
+                    eye = self.current()
+                    if self.sample_period > 0.0:
+                        next_sample += self.sample_period * max(1, math.floor((now - next_sample) / self.sample_period) + 1)
+                period = self.period
             if eye is not None:
                 self.socket.sendto(packet(eye, self.relative, self.distance), self.address)
                 self.sent += 1
-            next_send += self.period
+            next_send += period
             time.sleep(max(0.0, next_send - time.monotonic()))
 
     def stop(self):
@@ -119,7 +151,9 @@ def linux_path(wine_path):
 REST = (0.0, 0.0, 600.0)
 
 # Each step: {"eye": [x, y, z] | null, "glide": s, "hold": s} moves the head and waits;
-# {"cmd": "..."} sends a debug command and prints the reply.
+# {"cmd": "..."} sends a debug command and prints the reply; {"rate": hz,
+# "sample_rate": hz} changes the packet and pose rates; {"wobble": [mm, s]} adds
+# a sideways sway; {"sleep": s} just waits.
 SCENARIOS = {
     "basic": [
         {"eye": REST, "hold": 1.5},
@@ -168,6 +202,16 @@ def run_scenario(stream, client, steps):
         if "cmd" in step:
             reply = client.send(step["cmd"])
             print(f"> {step['cmd']}\n< {reply}", flush=True)
+            continue
+        if "rate" in step:
+            stream.set_rates(step["rate"], step.get("sample_rate"))
+            print(f"# rate {step['rate']} Hz, poses at {step.get('sample_rate') or step['rate']} Hz", flush=True)
+            continue
+        if "wobble" in step:
+            stream.set_wobble(*step["wobble"])
+            continue
+        if "sleep" in step:
+            time.sleep(step["sleep"])
             continue
         stream.set(step.get("eye"), step.get("glide", 0.0))
         time.sleep(step.get("glide", 0.0) + step.get("hold", 0.0))
