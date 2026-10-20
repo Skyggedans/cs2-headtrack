@@ -67,6 +67,38 @@ public class PoseRingTests
     }
 
     [Fact]
+    public void Each_sample_carries_when_the_packet_before_it_arrived()
+    {
+        var ring = new PoseRing(16);
+        ring.Push(100, Pose(1));
+        ring.Push(104, Pose(1));
+        ring.Push(108, Pose(1));
+        ring.Push(130, Pose(2));
+        var taken = new List<PoseSample>();
+
+        ring.TakeNewer(0, taken);
+
+        Assert.Equal(new[] { 0L, 108L }, taken.Select(s => s.PreviousArrival));
+    }
+
+    [Fact]
+    public void A_reader_that_keeps_up_loses_nothing()
+    {
+        var ring = new PoseRing(4);
+        var taken = new List<PoseSample>();
+        long last = 0;
+
+        for (int i = 1; i <= 40; i++)
+        {
+            ring.Push(i * 10, Pose(i));
+            last = ring.TakeNewer(last, taken);
+        }
+
+        Assert.Equal(40, taken.Count);
+        Assert.Equal(0, ring.Overwritten);
+    }
+
+    [Fact]
     public void A_pose_equal_to_an_older_one_but_not_the_last_is_kept()
     {
         var ring = new PoseRing(16);
@@ -114,6 +146,7 @@ public class PoseRingTests
 
         Assert.Equal(9, last);
         Assert.Equal(new[] { 6.0, 7.0, 8.0, 9.0 }, taken.Select(s => s.Pose.X));
+        Assert.Equal(4, ring.Overwritten);
     }
 
     [Fact]

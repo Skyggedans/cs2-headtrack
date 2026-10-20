@@ -6,15 +6,19 @@ namespace HeadTrack.Core
     /// <summary>One received pose and when it arrived (Stopwatch ticks).</summary>
     public readonly struct PoseSample
     {
-        public PoseSample(long timestamp, OpenTrackPose pose)
+        public PoseSample(long timestamp, OpenTrackPose pose, long previousArrival = 0)
         {
             Timestamp = timestamp;
             Pose = pose;
+            PreviousArrival = previousArrival;
         }
 
         public long Timestamp { get; }
 
         public OpenTrackPose Pose { get; }
+
+        /// <summary>When the packet before this one arrived, a repeat or not (0 for the first).</summary>
+        public long PreviousArrival { get; }
     }
 
     /// <summary>
@@ -32,6 +36,7 @@ namespace HeadTrack.Core
         private bool m_HasLast;
         private OpenTrackPose m_Last;
         private long m_LastArrival;
+        private long m_Read;
 
         public PoseRing(int capacity)
         {
@@ -45,7 +50,7 @@ namespace HeadTrack.Core
         /// <summary>Poses dropped as bitwise repeats of the previous one.</summary>
         public long Duplicates { get; private set; }
 
-        /// <summary>Samples overwritten before anyone could read them.</summary>
+        /// <summary>Samples overwritten before the reader took them.</summary>
         public long Overwritten { get; private set; }
 
         /// <summary>
@@ -67,6 +72,7 @@ namespace HeadTrack.Core
         {
             lock (m_Lock)
             {
+                long previous = m_LastArrival;
                 m_LastArrival = timestamp;
                 if (m_HasLast && pose.BitwiseEquals(m_Last))
                 {
@@ -75,11 +81,11 @@ namespace HeadTrack.Core
                 }
                 m_HasLast = true;
                 m_Last = pose;
-                if (m_Count >= m_Samples.Length)
+                if (m_Count - m_Samples.Length >= m_Read)
                 {
                     Overwritten++;
                 }
-                m_Samples[m_Count % m_Samples.Length] = new PoseSample(timestamp, pose);
+                m_Samples[m_Count % m_Samples.Length] = new PoseSample(timestamp, pose, previous);
                 m_Count++;
             }
         }
@@ -98,6 +104,7 @@ namespace HeadTrack.Core
                 {
                     output.Add(m_Samples[sequence % m_Samples.Length]);
                 }
+                m_Read = m_Count;
                 return m_Count;
             }
         }
