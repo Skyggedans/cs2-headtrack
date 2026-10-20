@@ -11,6 +11,7 @@ using HeadTrack.Core;
 using HeadTrack.Debugging;
 using HeadTrack.Options;
 using HeadTrack.Patches;
+using HeadTrack.Rendering;
 using HeadTrack.Systems;
 using UnityEngine;
 
@@ -52,15 +53,9 @@ namespace HeadTrack
             updateSystem.UpdateBefore<HeadTrackRestoreSystem, CameraUpdateSystem>(SystemUpdatePhase.PreCulling);
             updateSystem.UpdateAfter<HeadTrackApplySystem, CameraUpdateSystem>(SystemUpdatePhase.PreCulling);
 
-            try
-            {
-                s_Harmony = new Harmony(HarmonyId);
-                CullingPatches.Apply(s_Harmony);
-            }
-            catch (Exception e)
-            {
-                Log.Error($"Harmony patches failed: {e}");
-            }
+            s_Harmony = new Harmony(HarmonyId);
+            Patch("culling", () => { CullingPatches.Apply(s_Harmony); return true; });
+            Patch("GTAO for the off-axis view", () => AoOffAxisPatch.Apply(s_Harmony));
 
             s_Host = new GameObject(nameof(HeadTrack));
             UnityEngine.Object.DontDestroyOnLoad(s_Host);
@@ -88,6 +83,26 @@ namespace HeadTrack
             s_Harmony?.UnpatchAll(HarmonyId);
             s_Harmony = null;
             Log.Info("OnDispose");
+        }
+
+        /// <summary>One group of Harmony patches; a target that moved in a game update costs only that group.</summary>
+        private static void Patch(string what, Func<bool> apply)
+        {
+            try
+            {
+                if (apply())
+                {
+                    Log.Info($"patched: {what}");
+                }
+                else
+                {
+                    Log.Warn($"not patched (target not found): {what}");
+                }
+            }
+            catch (Exception e)
+            {
+                Log.Error($"patch failed: {what}: {e}");
+            }
         }
 
         /// <summary>
