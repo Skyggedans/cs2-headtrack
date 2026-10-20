@@ -6,16 +6,19 @@
 #   tools/decompile.sh OUTDIR [ASSEMBLY...]
 #
 # Without assemblies it decompiles the ones the camera work needs. The game's
-# Managed directory and ilspycmd can be overridden with CS2_MANAGED_DIR and
-# ILSPYCMD.
+# Managed directory is the one the build uses (see Directory.Build.props), or
+# CS2_MANAGED_DIR; ilspycmd can be overridden with ILSPYCMD.
 set -euo pipefail
 
 out=${1:?usage: tools/decompile.sh OUTDIR [ASSEMBLY...]}
 shift
-managed=${CS2_MANAGED_DIR:-"/mnt/D/Games/Cities Skylines II/Cities2_Data/Managed"}
-ilspy=${ILSPYCMD:-"$HOME/.dotnet/tools/ilspycmd"}
-
 repo=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
+managed=${CS2_MANAGED_DIR:-$(dotnet msbuild "$repo/src/HeadTrack/HeadTrack.csproj" -getProperty:Cs2ManagedDir 2>/dev/null || true)}
+if [ -z "$managed" ] || [ ! -f "$managed/Game.dll" ]; then
+    echo "the game's Managed folder was not found; set Cs2GameDir (see the README) or CS2_MANAGED_DIR" >&2
+    exit 1
+fi
+ilspy=${ILSPYCMD:-"$HOME/.dotnet/tools/ilspycmd"}
 case "$(realpath -m "$out")/" in
     "$repo"/*)
         echo "refusing to decompile into the repository: $out" >&2
