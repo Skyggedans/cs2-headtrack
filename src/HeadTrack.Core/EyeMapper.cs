@@ -242,6 +242,15 @@ namespace HeadTrack.Core
                 return;
             }
             Vec3 centre = m_CaptureSum / m_CaptureCount;
+            if (m_Settings.Source == PoseSource.Absolute
+                && !(centre.Z >= SettingsLimits.ViewingDistanceMinMm && centre.Z <= SettingsLimits.ViewingDistanceMaxMm))
+            {
+                // Not an eye in front of the screen: another sender's numbers
+                // (OpenTrack's zeros after a switch). Start over.
+                m_CaptureSum = Vec3.Zero;
+                m_CaptureCount = 0;
+                return;
+            }
             m_Capturing = false;
             m_BlendFrom = HasReference ? CurrentReference(now) : eye;
             m_Blending = true;

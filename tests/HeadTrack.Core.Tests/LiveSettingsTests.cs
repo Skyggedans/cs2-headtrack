@@ -254,9 +254,9 @@ public class LiveSettingsTests
         // OpenTrack stops; tobii-opentrack starts a second later.
         settings.Mapper.Source = PoseSource.Absolute;
         var camera = GameCamera();
-        for (double now = 2.0; now < 3.0; now += 1 / Fps)
+        for (int i = 0; i < Fps; i++)
         {
-            head.Compute(now, camera, 1120, gateOpen: true, cut: false);
+            head.Compute(2.0 + i / Fps, camera, 1120, gateOpen: true, cut: false);
         }
         RunPoses(head, 3.0, 6.0, _ => new OpenTrackPose(3.15, 8.4, 57.15, 0, 0, 0));
         List<FrameResult> moved = RunPoses(head, 6.0, 8.0, _ => new OpenTrackPose(3.15 - 4, 8.4, 57.15, 0, 0, 0));
@@ -444,5 +444,38 @@ public class LiveSettingsTests
         Assert.True(LargestStep(settled, f => f.Eye) <= GlideStep(change) + 1e-6,
             $"step {LargestStep(settled, f => f.Eye):F2} mm against a glide of {GlideStep(change):F2} mm");
         Assert.Equal(distance, settled[^1].Eye.Z, 3);
+    }
+
+    [Theory]
+    [InlineData(EyeMode.Centred)]
+    [InlineData(EyeMode.Window)]
+    public void A_switch_to_an_absolute_source_never_centres_on_the_old_senders_numbers(EyeMode mode)
+    {
+        var settings = new HeadTrackSettings();
+        settings.Mapper.Mode = mode;
+        var head = new HeadCoupledCamera(settings);
+        RunPoses(head, 0, 2.0, _ => new OpenTrackPose(0, 0, 0, 0, 0, 0));
+
+        // The source is switched while OpenTrack still sends its zeros for a
+        // second; then it stops, and tobii-opentrack starts a second later.
+        settings.Mapper.Source = PoseSource.Absolute;
+        RunPoses(head, 2.0, 3.0, _ => new OpenTrackPose(0, 0, 0, 0, 0, 0));
+        var camera = GameCamera();
+        for (int i = 0; i < Fps; i++)
+        {
+            head.Compute(3.0 + i / Fps, camera, 1120, gateOpen: true, cut: false);
+        }
+        List<FrameResult> rest = RunPoses(head, 4.0, 7.0, _ => new OpenTrackPose(3.15, 8.4, 57.15, 0, 0, 0));
+
+        // At rest: the game's own view when centred, the true eye as a window.
+        Vec3 seat = new Vec3(-31.5, 84, 571.5);
+        if (mode == EyeMode.Centred)
+        {
+            Assert.False(rest[^1].Apply, $"the rest pose shows {Offset(rest[^1])} mm off the game's view");
+        }
+        else
+        {
+            Assert.True((rest[^1].Eye - seat).Length < 0.5, $"eye {rest[^1].Eye} for a head at {seat}");
+        }
     }
 }
