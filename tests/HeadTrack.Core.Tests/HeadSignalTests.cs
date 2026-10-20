@@ -6,18 +6,20 @@ public class HeadSignalTests
 {
     private const double Period = 1.0 / 33.0;
 
-    /// <summary>A tracker at 33 Hz with normal arrival jitter, and a game at a jittery frame rate.</summary>
+    /// <summary>A tracker (33 Hz unless told otherwise) with normal arrival jitter, and a game at a jittery frame rate.</summary>
     private sealed class Rig
     {
         private readonly Random m_Rng;
         private readonly double m_JitterSigma;
+        private readonly double m_Period;
         private readonly Queue<(double Arrival, Vec3 Eye)> m_InFlight = new();
         private double m_NextSample;
 
-        public Rig(int seed, double jitterSigma = 0.002)
+        public Rig(int seed, double jitterSigma = 0.002, double period = Period)
         {
             m_Rng = new Random(seed);
             m_JitterSigma = jitterSigma;
+            m_Period = period;
         }
 
         public HeadSignal Signal { get; } = new(new SignalSettings());
@@ -46,7 +48,7 @@ public class HeadSignalTests
                     {
                         m_InFlight.Enqueue((m_NextSample + Math.Abs(Gaussian()) * m_JitterSigma, value.Value));
                     }
-                    m_NextSample += Period;
+                    m_NextSample += m_Period;
                 }
                 while (m_InFlight.Count > 0 && m_InFlight.Peek().Arrival <= now)
                 {
@@ -171,13 +173,32 @@ public class HeadSignalTests
         Assert.True(heldShare <= 0.001, $"held {heldShare:P2} of frames");
     }
 
-    [Fact]
-    public void The_period_estimate_follows_the_tracker()
+    [Theory]
+    [InlineData(33.0)]
+    [InlineData(60.0)]
+    [InlineData(250.0)]
+    public void The_period_estimate_follows_the_tracker(double hz)
     {
-        var rig = new Rig(seed: 3);
+        // Arrival jitter a sixteenth of the period, so samples stay in order.
+        var rig = new Rig(seed: 3, jitterSigma: 1.0 / hz / 16, period: 1.0 / hz);
         rig.Run(0, 3, 60.0, t => new Vec3(0, 0, 600));
 
-        Assert.Equal(Period, rig.Frames[^1].Output.Period, 3);
+        double period = rig.Frames[^1].Output.Period;
+        Assert.True(Math.Abs(period * hz - 1) < 0.05, $"period {period * 1000:F2} ms for a {1000 / hz:F2} ms tracker");
+    }
+
+    [Fact]
+    public void Distinct_poses_at_250_hz_keep_the_delay_short()
+    {
+        // OpenTrack with a filter on: a new pose in every 4 ms packet.
+        var signal = new HeadSignal(new SignalSettings());
+        var packets = Packets(0, 3, 0.004, 0.004, t => Sway(t));
+
+        var frames = Drive(signal, packets, 0, 3, 60);
+
+        HeadSignalOutput last = frames[^1].Output;
+        Assert.InRange(last.Period, 0.0036, 0.0044);
+        Assert.True(last.Delay < 0.010, $"delay {last.Delay * 1000:F1} ms");
     }
 
     [Theory]
@@ -353,6 +374,8 @@ public class HeadSignalTests
 
         var frames = Drive(signal, packets, 0, 8, 144);
 
+        double before = frames.Last(f => f.Time <= 2.9).Output.Period;
+        Assert.InRange(before, 0.0036, 0.0044);
         double period = frames.Last(f => f.Time <= 5.0).Output.Period;
         Assert.True(Math.Abs(period - Period) < 0.1 * Period, $"period {period * 1000:F1} ms two seconds after the drop");
         var late = frames.Where(f => f.Time > 6).ToList();
