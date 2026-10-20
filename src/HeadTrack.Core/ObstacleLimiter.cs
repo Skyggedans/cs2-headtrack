@@ -52,23 +52,31 @@ namespace HeadTrack.Core
     /// Keeps the head-coupled camera out of buildings: the move from the
     /// game's position is cut to the clear length the last cast found. A
     /// shorter clear length applies at once; a longer one, or none, lets the
-    /// allowance grow back only at a release speed, so the camera never jumps
-    /// away from a wall it was stopped at.
+    /// allowance grow back by as much as the head's own move grew, so a sweep
+    /// is never held back, plus a release speed, so a camera stopped at a wall
+    /// glides away from it when the head holds still instead of jumping.
     /// </summary>
     public sealed class ObstacleLimiter
     {
+        private double m_LastWanted = double.NaN;
+
         /// <summary>How far (m) the camera may move from the game's position.</summary>
         public double Allowed { get; private set; } = double.PositiveInfinity;
 
         /// <summary>
         /// Takes the clear length (m) the last cast found (+∞ when it hit
-        /// nothing, null when nothing was cast); the allowance grows by at most
-        /// <paramref name="releaseSpeed"/> (m/s) over <paramref name="dt"/> (s).
+        /// nothing, null when nothing was cast) and how far (m) the head asked
+        /// to move the camera from the game's position in the last frame (NaN
+        /// if it did not); the allowance grows by what that ask grew since the
+        /// frame before, plus <paramref name="releaseSpeed"/> (m/s) over
+        /// <paramref name="dt"/> (s).
         /// </summary>
-        public void Update(double dt, double? clearLength, double releaseSpeed)
+        public void Update(double dt, double? clearLength, double releaseSpeed, double wantedLength = double.NaN)
         {
+            double grown = Ease.IsFinite(wantedLength) && Ease.IsFinite(m_LastWanted) ? Math.Max(0, wantedLength - m_LastWanted) : 0;
+            m_LastWanted = wantedLength;
             double target = clearLength.HasValue ? Math.Max(0, clearLength.Value) : double.PositiveInfinity;
-            Allowed = target <= Allowed ? target : Math.Min(target, Allowed + releaseSpeed * Math.Max(0, dt));
+            Allowed = target <= Allowed ? target : Math.Min(target, Allowed + releaseSpeed * Math.Max(0, dt) + grown);
         }
 
         /// <summary><paramref name="wanted"/>, pulled back along the move towards <paramref name="basePosition"/> to the allowance.</summary>
@@ -82,6 +90,7 @@ namespace HeadTrack.Core
         public void Reset()
         {
             Allowed = double.PositiveInfinity;
+            m_LastWanted = double.NaN;
         }
     }
 }

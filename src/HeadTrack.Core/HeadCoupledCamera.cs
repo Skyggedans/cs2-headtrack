@@ -107,7 +107,7 @@ namespace HeadTrack.Core
     public readonly struct FrameResult
     {
         public FrameResult(bool apply, OffAxisView view, WindowGeometry window, Vec3 eye, Vec3 unclamped, bool clamped,
-            double weight, double depth, HeadSignalOutput signal, bool frozen, double maxCameraSpeed)
+            double weight, double depth, HeadSignalOutput signal, bool frozen)
         {
             Apply = apply;
             View = view;
@@ -119,7 +119,6 @@ namespace HeadTrack.Core
             Depth = depth;
             Signal = signal;
             Frozen = frozen;
-            MaxCameraSpeed = maxCameraSpeed;
         }
 
         /// <summary>False: leave the game's camera exactly as it is.</summary>
@@ -148,9 +147,6 @@ namespace HeadTrack.Core
 
         /// <summary>The eye is held where it was when a freeze began (a tool is being dragged).</summary>
         public bool Frozen { get; }
-
-        /// <summary>The fastest (m/s) the head may move the camera with this frame's window; 0 when there is none.</summary>
-        public double MaxCameraSpeed { get; }
     }
 
     /// <summary>
@@ -291,7 +287,7 @@ namespace HeadTrack.Core
 
             if (!signal.HasEye || weight <= 0 || !IsFinite(offset) || offset.Length < Settings.MinOffsetMm)
             {
-                return Skip(window, neutral, camera.Position, weight, windowDepth, signal, parameters);
+                return Skip(window, neutral, camera.Position, weight, windowDepth, signal);
             }
             for (int attempt = 0; attempt <= Settings.ShrinkAttempts; attempt++)
             {
@@ -304,13 +300,12 @@ namespace HeadTrack.Core
                     if (view.Valid)
                     {
                         bool clamped = (position - wanted).Length > 0;
-                        return new FrameResult(true, view, window, eye, wanted, clamped, weight, windowDepth, signal, m_Frozen,
-                            MaxCameraSpeed(window, parameters));
+                        return new FrameResult(true, view, window, eye, wanted, clamped, weight, windowDepth, signal, m_Frozen);
                     }
                 }
                 offset *= 0.5;
             }
-            return Skip(window, neutral, camera.Position, weight, windowDepth, signal, parameters);
+            return Skip(window, neutral, camera.Position, weight, windowDepth, signal);
         }
 
         /// <summary>
@@ -388,17 +383,8 @@ namespace HeadTrack.Core
             return offset;
         }
 
-        private FrameResult Skip(WindowGeometry window, Vec3 neutral, Vec3 position, double weight, double depth, HeadSignalOutput signal,
-            ViewParameters parameters) =>
-            new FrameResult(false, default, window, neutral, position, false, weight, depth, signal, m_Frozen,
-                MaxCameraSpeed(window, parameters));
-
-        /// <summary>
-        /// The signal's speed limit carried into the world: through the
-        /// largest gain the view applies (never below 1) and the window's scale.
-        /// </summary>
-        private double MaxCameraSpeed(WindowGeometry window, ViewParameters parameters) =>
-            Settings.Signal.MaxSpeed * window.Scale * Math.Max(1, Math.Max(parameters.LateralViewGain, Math.Abs(parameters.Gain.Z)));
+        private FrameResult Skip(WindowGeometry window, Vec3 neutral, Vec3 position, double weight, double depth, HeadSignalOutput signal) =>
+            new FrameResult(false, default, window, neutral, position, false, weight, depth, signal, m_Frozen);
 
         private static bool IsFinite(double value) => !double.IsNaN(value) && !double.IsInfinity(value);
 

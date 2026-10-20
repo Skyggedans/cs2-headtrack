@@ -58,6 +58,7 @@ namespace HeadTrack.Systems
         private double m_LastObstacleUpdate;
         private readonly ViewHold m_Hold = new ViewHold();
         private bool m_Skipped;
+        private double m_WantedLength = double.NaN;
         private double m_LastDepth = 100;
         private TerrainHeightData m_Height;
         private WaterSurfacesData m_Surfaces;
@@ -199,6 +200,7 @@ namespace HeadTrack.Systems
             bool freeze = HoldView();
 
             FrameResult result = Runtime.Head.Compute(now, frame, m_LastDepth, gateOpen, cut, m_Clamp, freeze, maxGain);
+            m_WantedLength = m_HasGroundWanted ? (m_GroundWanted - m_Base).Length : double.NaN;
             if (result.Weight > 0)
             {
                 // The game keeps its own camera this far from buildings; other
@@ -349,11 +351,12 @@ namespace HeadTrack.Systems
                 m_Obstacles.Reset();
                 return;
             }
-            // The allowance grows back no faster than the head may move the
-            // camera (1 m per head mm until a frame has had a window).
-            double speed = Runtime.LastFrame.MaxCameraSpeed;
-            double release = speed > 0 && !double.IsInfinity(speed) ? speed : Runtime.Settings.Signal.MaxSpeed;
-            m_Obstacles.Update(dt, clear, release);
+            // The allowance grows back with the head's own move, plus the
+            // head's speed limit at gain 1, so a stop lifted under a still
+            // head glides out (1 m per head mm until a frame had a window).
+            double scale = Runtime.LastFrame.Window.Scale;
+            double metresPerMm = scale > 0 && !double.IsInfinity(scale) ? scale : 1.0;
+            m_Obstacles.Update(dt, clear, Runtime.Settings.Signal.MaxSpeed * metresPerMm, m_WantedLength);
             Runtime.ObstacleAllowed = m_Obstacles.Allowed;
         }
 

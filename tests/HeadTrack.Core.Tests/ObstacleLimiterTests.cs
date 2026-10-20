@@ -105,4 +105,57 @@ public class ObstacleLimiterTests
         Vec3 wanted = Base + new Vec3(3, 4, 0);
         Near(wanted, limiter.Limit(Base, wanted));
     }
+
+    /// <summary>
+    /// Frames at 60 fps after a stop at <paramref name="stop"/> m, with the
+    /// cast clear and the head asking for <paramref name="wanted"/>(t) m: the
+    /// mod's order (the last frame's ask goes into Update, then this frame's
+    /// move is limited). Returns how far each frame's camera fell short.
+    /// </summary>
+    private static List<double> Lags(double stop, Func<double, double> wanted, double releaseSpeed, double seconds)
+    {
+        var limiter = new ObstacleLimiter();
+        const double dt = 1.0 / 60;
+        limiter.Update(dt, stop, releaseSpeed);
+        var lags = new List<double>();
+        double asked = double.NaN;
+        for (int frame = 1; frame * dt <= seconds; frame++)
+        {
+            limiter.Update(dt, double.PositiveInfinity, releaseSpeed, asked);
+            double length = wanted(frame * dt);
+            Vec3 move = new Vec3(length, 0, 0);
+            Vec3 got = limiter.Limit(Base, Base + move);
+            lags.Add(length - (got - Base).Length);
+            asked = length;
+        }
+        return lags;
+    }
+
+    [Fact]
+    public void After_a_stop_the_allowance_keeps_pace_with_a_sweep_faster_than_its_release()
+    {
+        // Gain 4: a 0.4 s sweep of 1 km, peaking at 3.75 km/s, while the
+        // release is the head's gain-1 speed of 1.5 km/s.
+        List<double> lags = Lags(20, t => 20 + 1000 * Smoothstep(t / 0.4), releaseSpeed: 1500, seconds: 0.6);
+
+        Assert.True(lags.Max() < 1e-9, $"the camera fell {lags.Max():F1} m behind the head");
+    }
+
+    [Fact]
+    public void A_stop_lifted_under_a_still_head_glides_out_at_the_release_speed()
+    {
+        // The head holds a lean that wants 100 m; the camera stopped at 15 m
+        // and the cast clears (the camera turned past the building's edge).
+        List<double> lags = Lags(15, t => 100, releaseSpeed: 1500, seconds: 0.2);
+
+        Assert.Equal(100 - 15 - 25, lags[0], 9);
+        Assert.Equal(100 - 15 - 50, lags[1], 9);
+        Assert.Equal(0, lags[^1], 9);
+    }
+
+    private static double Smoothstep(double p)
+    {
+        p = Math.Clamp(p, 0, 1);
+        return p * p * (3 - 2 * p);
+    }
 }
