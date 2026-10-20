@@ -1,8 +1,10 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Net;
+using System.Text;
 using Game;
 using Game.Rendering;
 using Game.SceneFlow;
@@ -113,7 +115,47 @@ namespace HeadTrack.Debugging
                 case DebugVerb.View:
                     channel.Reply(from, View(command.View, out string placed) ? $"ok view {placed}" : $"err view: {placed}");
                     return;
+                case DebugVerb.Display:
+                    if (command.Argument.Length == 0)
+                    {
+                        channel.Reply(from, "ok display " + DescribeDisplays());
+                        return;
+                    }
+                    StartCoroutine(MoveToDisplay(channel, int.Parse(command.Argument, CultureInfo.InvariantCulture), from));
+                    return;
             }
+        }
+
+        /// <summary>Unity's display list (index, name, size, work area origin), which one holds the window, and where it is.</summary>
+        private static string DescribeDisplays()
+        {
+            var layout = new List<DisplayInfo>();
+            Screen.GetDisplayLayout(layout);
+            DisplayInfo current = Screen.mainWindowDisplayInfo;
+            var text = new StringBuilder();
+            for (int i = 0; i < layout.Count; i++)
+            {
+                DisplayInfo display = layout[i];
+                text.AppendFormat(CultureInfo.InvariantCulture, "{0}: {1} {2}x{3} at ({4},{5}){6}; ", i, display.name, display.width,
+                    display.height, display.workArea.x, display.workArea.y, display.Equals(current) ? " (window)" : string.Empty);
+            }
+            text.AppendFormat(CultureInfo.InvariantCulture, "window at {0}", Screen.mainWindowPosition);
+            return text.ToString();
+        }
+
+        /// <summary>Moves the game window to a display the way the game's own display setting does, then reports where it went.</summary>
+        private static IEnumerator MoveToDisplay(DebugChannel channel, int index, EndPoint from)
+        {
+            var layout = new List<DisplayInfo>();
+            Screen.GetDisplayLayout(layout);
+            if (index >= layout.Count)
+            {
+                channel.Reply(from, $"err display {index}: there are {layout.Count} displays");
+                yield break;
+            }
+            DisplayInfo target = layout[index];
+            yield return Screen.MoveMainWindowTo(in target, Vector2Int.zero);
+            channel.Reply(from, "ok display " + DescribeDisplays());
         }
 
         /// <summary>Puts the gameplay camera's pivot (its height follows the ground), zoom and angles where the command says.</summary>

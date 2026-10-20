@@ -13,6 +13,8 @@ public class DebugCommandTests
     [InlineData("pause 1", DebugVerb.Pause, "1")]
     [InlineData("freeze 1", DebugVerb.Freeze, "1")]
     [InlineData("freeze 0", DebugVerb.Freeze, "0")]
+    [InlineData("display", DebugVerb.Display, "")]
+    [InlineData("display 1", DebugVerb.Display, "1")]
     [InlineData("centre", DebugVerb.Centre, "")]
     [InlineData("quit", DebugVerb.Quit, "")]
     public void Parses_each_verb(string text, DebugVerb verb, string argument)
@@ -54,6 +56,9 @@ public class DebugCommandTests
     [InlineData("view 1 2 0 4 5")]
     [InlineData("view a b c d e")]
     [InlineData("freeze yes")]
+    [InlineData("display -1")]
+    [InlineData("display left")]
+    [InlineData("display 1 2")]
     [InlineData("frobnicate")]
     [InlineData("shot")]
     [InlineData("shot ../etc/passwd")]

@@ -33,6 +33,9 @@ namespace HeadTrack.Core
 
         /// <summary>Put the gameplay camera somewhere: view &lt;pivot x&gt; &lt;pivot z&gt; &lt;zoom&gt; &lt;yaw&gt; &lt;pitch&gt;.</summary>
         View,
+
+        /// <summary>List the displays (no argument) or move the game window to one: display [&lt;index&gt;].</summary>
+        Display,
     }
 
     /// <summary>Where <see cref="DebugVerb.View"/> puts the gameplay camera: pivot (m), zoom (m), angles (degrees).</summary>
@@ -120,6 +123,19 @@ namespace HeadTrack.Core
                     }
                     DebugVerb toggle = verb == "enable" ? DebugVerb.Enable : verb == "pause" ? DebugVerb.Pause : DebugVerb.Freeze;
                     command = new DebugCommand(toggle, words[1], string.Empty, string.Empty);
+                    return true;
+                case "display":
+                    if (words.Length == 1)
+                    {
+                        command = new DebugCommand(DebugVerb.Display, string.Empty, string.Empty, string.Empty);
+                        return true;
+                    }
+                    if (words.Length != 2 || !int.TryParse(words[1], NumberStyles.None, CultureInfo.InvariantCulture, out int display) || display < 0)
+                    {
+                        error = "usage: display [<index>]";
+                        return false;
+                    }
+                    command = new DebugCommand(DebugVerb.Display, words[1], string.Empty, string.Empty);
                     return true;
                 case "view":
                     double[] numbers = new double[5];
