@@ -23,13 +23,16 @@ namespace HeadTrack.Core
 
         /// <summary>How many times an offset that gives no view is halved before the frame gives up.</summary>
         public int ShrinkAttempts { get; set; } = 4;
+
+        /// <summary>How long the camera takes to glide back to the head when a freeze ends (s).</summary>
+        public double FreezeReleaseSeconds { get; set; } = 0.3;
     }
 
     /// <summary>What to do with the camera this frame.</summary>
     public readonly struct FrameResult
     {
         public FrameResult(bool apply, OffAxisView view, WindowGeometry window, Vec3 eye, Vec3 unclamped, bool clamped,
-            double weight, double depth, HeadSignalOutput signal)
+            double weight, double depth, HeadSignalOutput signal, bool frozen)
         {
             Apply = apply;
             View = view;
@@ -40,6 +43,7 @@ namespace HeadTrack.Core
             Weight = weight;
             Depth = depth;
             Signal = signal;
+            Frozen = frozen;
         }
 
         /// <summary>False: leave the game's camera exactly as it is.</summary>
@@ -65,6 +69,9 @@ namespace HeadTrack.Core
         public double Depth { get; }
 
         public HeadSignalOutput Signal { get; }
+
+        /// <summary>The eye is held where it was when a freeze began (a tool is being dragged).</summary>
+        public bool Frozen { get; }
     }
 
     /// <summary>
@@ -78,6 +85,11 @@ namespace HeadTrack.Core
         private readonly ExponentialSmoother m_Depth;
         private bool m_HasFrame;
         private double m_LastFrame;
+        private bool m_Frozen;
+        private bool m_Releasing;
+        private double m_ReleaseStart;
+        private Vec3 m_ReleaseFrom;
+        private Vec3 m_LastOffset;
 
         public HeadCoupledCamera(HeadTrackSettings settings)
         {
@@ -124,8 +136,12 @@ namespace HeadTrack.Core
         /// <paramref name="cut"/> drops it at once. <paramref name="clamp"/>
         /// may move the wanted position (terrain, water, buildings); the
         /// frustum is built from wherever the camera ends up.
+        /// <paramref name="freeze"/> holds the eye where it is (a tool is being
+        /// dragged, so the world must stay put under the cursor); when it ends,
+        /// the eye glides back to the head.
         /// </summary>
-        public FrameResult Compute(double now, CameraFrame camera, double depth, bool gateOpen, bool cut, Func<Vec3, Vec3>? clamp = null)
+        public FrameResult Compute(double now, CameraFrame camera, double depth, bool gateOpen, bool cut, Func<Vec3, Vec3>? clamp = null,
+            bool freeze = false)
         {
             double dt = m_HasFrame ? Math.Max(0, now - m_LastFrame) : 0;
             m_HasFrame = true;
@@ -147,7 +163,7 @@ namespace HeadTrack.Core
                 Settings.Mapper.ScreenWidthMm, Settings.Mapper.ScreenHeightMm);
             Vec3 neutral = window.NeutralEye;
             Vec3 mapped = Mapper.Map(now, signal, window.Z0, neutral);
-            Vec3 offset = (mapped - neutral) * weight;
+            Vec3 offset = Hold(now, mapped - neutral, freeze) * weight;
 
             if (!signal.HasEye || weight <= 0 || offset.Length < Settings.MinOffsetMm)
             {
@@ -162,14 +178,53 @@ namespace HeadTrack.Core
                 if (view.Valid)
                 {
                     bool clamped = (position - wanted).Length > 0;
-                    return new FrameResult(true, view, window, eye, wanted, clamped, weight, smoothedDepth, signal);
+                    return new FrameResult(true, view, window, eye, wanted, clamped, weight, smoothedDepth, signal, m_Frozen);
                 }
                 offset *= 0.5;
             }
             return Skip(window, neutral, camera.Position, weight, smoothedDepth, signal);
         }
 
-        private static FrameResult Skip(WindowGeometry window, Vec3 neutral, Vec3 position, double weight, double depth, HeadSignalOutput signal) =>
-            new FrameResult(false, default, window, neutral, position, false, weight, depth, signal);
+        /// <summary>The eye offset (mm) to use: held while frozen, gliding from there to the live one once the freeze ends.</summary>
+        private Vec3 Hold(double now, Vec3 live, bool freeze)
+        {
+            if (freeze)
+            {
+                m_Frozen = true;
+                m_Releasing = false;
+                return m_LastOffset;
+            }
+            if (m_Frozen)
+            {
+                m_Frozen = false;
+                m_Releasing = true;
+                m_ReleaseStart = now;
+                m_ReleaseFrom = m_LastOffset;
+            }
+            Vec3 offset = live;
+            if (m_Releasing)
+            {
+                double progress = Settings.FreezeReleaseSeconds > 0 ? (now - m_ReleaseStart) / Settings.FreezeReleaseSeconds : 1;
+                if (progress >= 1)
+                {
+                    m_Releasing = false;
+                }
+                else
+                {
+                    offset = m_ReleaseFrom + (live - m_ReleaseFrom) * Smoothstep(progress);
+                }
+            }
+            m_LastOffset = offset;
+            return offset;
+        }
+
+        private FrameResult Skip(WindowGeometry window, Vec3 neutral, Vec3 position, double weight, double depth, HeadSignalOutput signal) =>
+            new FrameResult(false, default, window, neutral, position, false, weight, depth, signal, m_Frozen);
+
+        private static double Smoothstep(double p)
+        {
+            p = p < 0 ? 0 : p > 1 ? 1 : p;
+            return p * p * (3 - 2 * p);
+        }
     }
 }
