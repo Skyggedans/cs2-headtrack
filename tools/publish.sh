@@ -19,7 +19,10 @@
 # hands them to the publisher in a file only this run can read, and keeps the
 # publisher's session in the temporary folder, apart from the game's.
 #
-# The publisher targets .NET 6 and runs on a newer runtime.
+# Paradox's SDK in the publisher does its file work through kernel32, which
+# Linux does not have; the run uses a copy of the publisher whose SDK uses its
+# own portable implementation instead (tools/publisher-sdk-patch.cs). The
+# publisher targets .NET 6 and runs on a newer runtime.
 set -euo pipefail
 
 command=${1:?usage: tools/publish.sh Publish|NewVersion|Update [--login]}
@@ -54,6 +57,8 @@ stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT
 # Every command takes the content folder, even Update, which sends no files.
 dotnet build "$project" -c Release -t:Deploy -p:Cs2ModsDir="$stage/mods" -v:quiet -nologo
+cp -r "$(dirname "$publisher")" "$stage/publisher"
+dotnet run "$repo/tools/publisher-sdk-patch.cs" -- "$stage/publisher/PDX.SDK.dll"
 mkdir -p "$stage/xdg/share" "$stage/xdg/LocalLow/Colossal Order"
 access=()
 if [ -n "$login" ]; then
@@ -70,4 +75,4 @@ fi
 
 cd "$repo/src/HeadTrack"
 XDG_DATA_HOME="$stage/xdg/share" DOTNET_ROLL_FORWARD=Major \
-    dotnet "$publisher" "$command" Properties/PublishConfiguration.xml -c "$stage/mods/HeadTrack" "${access[@]}" -v
+    dotnet "$stage/publisher/ModPublisher.dll" "$command" Properties/PublishConfiguration.xml -c "$stage/mods/HeadTrack" "${access[@]}" -v
