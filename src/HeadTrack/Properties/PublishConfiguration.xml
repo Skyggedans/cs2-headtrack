@@ -1,7 +1,7 @@
 <Publish>
 	<!-- What tools/publish.sh sends to Paradox Mods with the game's ModPublisher.
 	     ModId is filled in after the first publish; NewVersion and Update need it. -->
-	<ModId Value="" />
+	<ModId Value="164244" />
 	<DisplayName Value="HeadTrack" />
 	<ShortDescription Value="The screen as a window into your city: the camera moves with your head. Needs a head tracker and OpenTrack." />
 	<LongDescription>
