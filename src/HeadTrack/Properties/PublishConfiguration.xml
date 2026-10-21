@@ -1,0 +1,34 @@
+<Publish>
+	<!-- What tools/publish.sh sends to Paradox Mods with the game's ModPublisher.
+	     ModId is filled in after the first publish; NewVersion and Update need it. -->
+	<ModId Value="" />
+	<DisplayName Value="HeadTrack" />
+	<ShortDescription Value="The screen as a window into your city: the camera moves with your head. Needs a head tracker and OpenTrack." />
+	<LongDescription>
+HeadTrack moves the camera with your head, so the screen works like a window into the city: lean to the right and nearby towers slide left against the ground, the far hills move with you, and with a higher gain you can look around a building. It is a head-coupled perspective (an off-axis projection): the ground the camera aims at stays put, and the mouse still picks exactly what you see.
+
+**You need** a head tracker that OpenTrack supports and OpenTrack itself. HeadTrack was built and tested with a Tobii Eye Tracker 5.
+
+**Set up OpenTrack**
+- Input: your tracker.
+- Output: UDP over network, address 127.0.0.1, port 4242. OpenTrack's default address, 192.168.0.2, never reaches the game.
+- Filter: none. The mod smooths the poses itself.
+- Mapping: keep the translation curves 1:1.
+- Sit normally, facing the screen the game is on, and centre: OpenTrack's Center key, or Shift+H in the game.
+
+**In the game:** Options, HeadTrack. Keys: Ctrl+H turns it on and off, Shift+H centres, N holds the view. Gain 1 is physically right; 3 to 5 lets you look around buildings. While you drag with a building tool the view holds still. The follow camera is on by default, photo mode off.
+
+**Limitations**
+- Through OpenTrack a lost face is not seen: the view holds where your head was.
+- Buildings are checked with one ray along the camera's move, so on a fast turn in a narrow street the camera can touch a wall for a frame.
+- Level of detail and lights follow the shifted camera.
+
+Source code, setup details and issues: https://github.com/Skyggedans/cs2-headtrack (MIT licence).
+	</LongDescription>
+	<Thumbnail Value="Properties/Thumbnail.png" />
+	<ModVersion Value="0.1.0" />
+	<GameVersion Value="1.6.*" />
+	<ChangeLog Value="First release." />
+	<ExternalLink Type="github" Url="https://github.com/Skyggedans/cs2-headtrack" />
+	<AccessLevel Value="Unlisted" />
+</Publish>

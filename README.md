@@ -174,6 +174,12 @@ the reference vectors the geometry tests check against with an independent
 NumPy implementation; `tools/decompile.sh` decompiles game assemblies into a
 folder outside the repository.
 
+`tools/publish.sh Publish|NewVersion|Update` uploads a release build to
+Paradox Mods with the ModPublisher the game ships, using
+`src/HeadTrack/Properties/PublishConfiguration.xml` and the game's own
+Paradox login (on Linux; on Windows the official modding toolchain does the
+same).
+
 ## Licence
 
 MIT; see [LICENSE](LICENSE). The mod ships Harmony's `0Harmony.dll`, under
