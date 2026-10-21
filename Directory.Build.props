@@ -20,6 +20,10 @@
     <!-- A reference that resolves to an assembly version other than the one
          the game ships must fail the build, not warn. -->
     <MSBuildWarningsAsErrors>$(MSBuildWarningsAsErrors);MSB3277;MSB3268</MSBuildWarningsAsErrors>
+    <!-- A release build (the published one) names its sources from the
+         repository root (/_/), not from the building machine's folders, in
+         the DLLs and in the pdbs' SourceLink map to GitHub alike. -->
+    <ContinuousIntegrationBuild Condition="'$(Configuration)' == 'Release'">true</ContinuousIntegrationBuild>
   </PropertyGroup>
 
   <!-- The game: Steam on Windows, then Steam on Linux (Proton). -->
