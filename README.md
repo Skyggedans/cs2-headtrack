@@ -176,4 +176,5 @@ folder outside the repository.
 
 ## Licence
 
-Not chosen yet.
+MIT; see [LICENSE](LICENSE). The mod ships Harmony's `0Harmony.dll`, under
+Harmony's own MIT licence ([THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt)).

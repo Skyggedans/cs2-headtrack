@@ -33,7 +33,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Cs2DeployExtra Include="HeadTrack.Core.dll;HeadTrack.Core.pdb;0Harmony.dll" />
+    <!-- The licences travel with the mod: its own, and Harmony's for 0Harmony.dll. -->
+    <None Include="../../LICENSE" Link="LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../THIRD-PARTY-NOTICES.txt" Link="THIRD-PARTY-NOTICES.txt" CopyToOutputDirectory="PreserveNewest" />
+    <Cs2DeployExtra Include="HeadTrack.Core.dll;HeadTrack.Core.pdb;0Harmony.dll;LICENSE.txt;THIRD-PARTY-NOTICES.txt" />
   </ItemGroup>
 
   <Import Project="../../build/Cs2Mod.targets" />
